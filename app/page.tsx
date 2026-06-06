@@ -28,15 +28,80 @@ export default function MapPage() {
   const [session, setSession] = useState<any>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
 
+  // プロフィール用の状態
+  const [profile, setProfile] = useState<any>(null);
+  const [deptSelect, setDeptSelect] = useState('');
+  const [deptInput, setDeptInput] = useState('');
+  const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+
+  const checkAndUpsertProfile = async (user: any) => {
+    try {
+      const { data, error } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      
+      if (error && error.code === 'PGRST116') {
+        const newProfile = {
+          id: user.id,
+          display_name: user.user_metadata?.full_name || user.user_metadata?.name || 'ゲスト',
+          avatar_url: user.user_metadata?.avatar_url || '',
+          department: '',
+          student_id: '' 
+        };
+        await supabase.from('profiles').insert(newProfile);
+        setProfile(newProfile);
+      } else if (data) {
+        setProfile(data);
+        
+        // 既存の専攻データを「選択肢」か「その他」に振り分ける
+        const dept = data.department || '';
+        if (dept === '文化専攻' || dept === '環境専攻') {
+          setDeptSelect(dept);
+          setDeptInput('');
+        } else if (dept) {
+          setDeptSelect('その他');
+          setDeptInput(dept);
+        } else {
+          setDeptSelect('');
+          setDeptInput('');
+        }
+      }
+    } catch (err) {
+      console.error('プロフィールの取得・作成エラー:', err);
+    }
+  };
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
+      if (session?.user) checkAndUpsertProfile(session.user);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      if (session?.user) checkAndUpsertProfile(session.user);
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  const handleUpdateProfile = async () => {
+    if (!session?.user) return;
+    setIsUpdatingProfile(true);
+    try {
+      // 「その他」が選ばれている場合は自由入力欄の値を、そうでない場合は選択肢の値を採用
+      const finalDept = deptSelect === 'その他' ? deptInput : deptSelect;
+      
+      const { error } = await supabase.from('profiles').update({
+        department: finalDept,
+        updated_at: new Date().toISOString()
+      }).eq('id', session.user.id);
+      
+      if (error) throw error;
+      alert('プロフィールを更新しました。');
+      setProfile({ ...profile, department: finalDept });
+    } catch (err: any) {
+      alert('プロフィールの更新に失敗しました: ' + err.message);
+    } finally {
+      setIsUpdatingProfile(false);
+    }
+  };
 
   const fetchSavedRoutes = async () => {
     try {
@@ -53,7 +118,8 @@ export default function MapPage() {
           color: row.line_color || '#3b82f6',
           width: row.line_width || 4,
           style: row.line_style || 'solid',
-          pointColor: row.point_color || '#eab308' 
+          pointColor: row.point_color || '#eab308',
+          userId: row.user_id 
         }
       }));
 
@@ -68,7 +134,12 @@ export default function MapPage() {
 
   const fetchComments = async (routeId: string) => {
     try {
-      const { data, error } = await supabase.from('comments').select('*').eq('route_id', routeId).order('created_at', { ascending: true });
+      const { data, error } = await supabase
+        .from('comments')
+        .select('*, profiles(display_name, avatar_url)')
+        .eq('route_id', routeId)
+        .order('created_at', { ascending: true });
+        
       if (error) throw error;
       setComments(data || []);
     } catch (err) {
@@ -100,7 +171,6 @@ export default function MapPage() {
     map.current.on('load', () => {
       map.current?.addSource('saved-data', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       
-      // 【修正】無効な MultiLineString などの指定を削除（LineString, Polygon, Point だけで全種対応可能）
       map.current?.addLayer({
         id: 'saved-lines-solid', type: 'line', source: 'saved-data',
         filter: ['all', ['any', ['==', '$type', 'LineString'], ['==', '$type', 'Polygon']]],
@@ -290,7 +360,8 @@ export default function MapPage() {
         line_color: lineColor,
         line_width: lineWidth,
         line_style: lineStyle,
-        point_color: pointColor
+        point_color: pointColor,
+        user_id: session?.user?.id 
       });
       if (error) throw error;
       
@@ -315,7 +386,11 @@ export default function MapPage() {
     if (!newComment.trim() || !selectedRoute) return;
     setIsSaving(true);
     try {
-      const { error } = await supabase.from('comments').insert({ route_id: selectedRoute.id, content: newComment });
+      const { error } = await supabase.from('comments').insert({ 
+        route_id: selectedRoute.id, 
+        content: newComment,
+        user_id: session?.user?.id
+      });
       if (error) throw error;
       setNewComment('');
       fetchComments(selectedRoute.id);
@@ -424,6 +499,14 @@ export default function MapPage() {
                 <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {comments.map((c) => (
                     <li key={c.id} style={{ backgroundColor: '#f1f5f9', padding: '10px', borderRadius: '6px', fontSize: '13px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                        {c.profiles?.avatar_url && (
+                          <img src={c.profiles.avatar_url} alt="avatar" style={{ width: '20px', height: '20px', borderRadius: '50%' }} />
+                        )}
+                        <span style={{ fontWeight: 'bold', fontSize: '12px', color: '#334155' }}>
+                          {c.profiles?.display_name || 'ゲスト'}
+                        </span>
+                      </div>
                       <div style={{ whiteSpace: 'pre-wrap' }}>{c.content}</div>
                       <div style={{ fontSize: '11px', color: '#64748b', marginTop: '5px', textAlign: 'right' }}>{new Date(c.created_at).toLocaleString('ja-JP')}</div>
                     </li>
@@ -444,6 +527,42 @@ export default function MapPage() {
               <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 'bold' }}>空間データ読み込み＆保存</h3>
               <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', cursor: 'pointer', padding: 0 }}>ログアウト</button>
             </div>
+            
+            {/* プロフィール編集エリア */}
+            <div style={{ marginBottom: '15px', padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                {profile?.avatar_url && <img src={profile.avatar_url} alt="avatar" style={{ width: '32px', height: '32px', borderRadius: '50%' }} />}
+                <span style={{ fontWeight: 'bold', fontSize: '14px' }}>{profile?.display_name || '読込中...'}</span>
+              </div>
+              <div style={{ display: 'flex', gap: '5px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                {/* 専攻の選択肢 */}
+                <select 
+                  value={deptSelect} 
+                  onChange={e => setDeptSelect(e.target.value)} 
+                  style={{ padding: '4px 8px', fontSize: '12px', border: '1px solid #ccc', borderRadius: '4px' }}
+                >
+                  <option value="">専攻を選択...</option>
+                  <option value="文化専攻">文化専攻</option>
+                  <option value="環境専攻">環境専攻</option>
+                  <option value="その他">その他</option>
+                </select>
+                
+                {/* 「その他」の場合のみ自由記述欄を表示 */}
+                {deptSelect === 'その他' && (
+                  <input 
+                    type="text" 
+                    placeholder="専攻名を入力" 
+                    value={deptInput} 
+                    onChange={e => setDeptInput(e.target.value)} 
+                    style={{ flex: 1, padding: '4px 8px', fontSize: '12px', border: '1px solid #ccc', borderRadius: '4px', minWidth: '100px' }} 
+                  />
+                )}
+              </div>
+              <button onClick={handleUpdateProfile} disabled={isUpdatingProfile} style={{ width: '100%', padding: '6px', fontSize: '12px', fontWeight: 'bold', backgroundColor: isUpdatingProfile ? '#94a3b8' : '#cbd5e1', color: '#334155', border: 'none', borderRadius: '4px', cursor: isUpdatingProfile ? 'not-allowed' : 'pointer' }}>
+                {isUpdatingProfile ? '更新中...' : 'プロフィール情報を更新'}
+              </button>
+            </div>
+
             <div style={{ marginBottom: '15px' }}>
               <label style={{ display: 'block', padding: '12px', backgroundColor: '#f8fafc', border: '2px dashed #cbd5e1', borderRadius: '6px', textAlign: 'center', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', color: '#475569', transition: 'background-color 0.2s ease' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e2e8f0'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}>
                 {selectedFileName ? `📂 ${selectedFileName}` : '📂 ファイルを選択 (KML / GeoJSON)'}
