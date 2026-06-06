@@ -132,7 +132,7 @@ export default function MapPage() {
         paint: { 'circle-radius': 8, 'circle-color': pointColor, 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' }
       });
 
-      fetchSavedRoutes();
+        fetchSavedRoutes();
 
       const interactiveLayers = ['saved-lines-solid', 'saved-lines-dashed', 'saved-points'];
       
@@ -365,3 +365,4 @@ export default function MapPage() {
     </div>
   );
 }
+
