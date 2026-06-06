@@ -590,8 +590,8 @@ export default function MapPage() {
                 {deptSelect === 'その他' && (
                   <input 
                     type="text" 
-                    placeholder="専攻名を入力" 
-                    value={deptInput} 
+                    placeholder="学部・学科名などを入力" 
+                    value={deptInput}
                     onChange={e => setDeptInput(e.target.value)} 
                     style={{ flex: 1, padding: '4px 8px', fontSize: '12px', border: '1px solid #ccc', borderRadius: '4px', minWidth: '100px' }} 
                   />
