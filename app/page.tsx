@@ -167,7 +167,7 @@ export default function MapPage() {
     } catch (e) {}
   }, [lineColor, lineWidth, lineStyle, pointColor]);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+ const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) { setSelectedFileName(null); return; }
     setSelectedFileName(file.name);
@@ -185,19 +185,57 @@ export default function MapPage() {
         if (source) {
           source.setData(geojson);
           if (geojson.features && geojson.features.length > 0) {
-            const firstFeature = geojson.features[0];
-            setUploadData(firstFeature);
-            setRouteTitle(firstFeature.properties?.name || firstFeature.properties?.T1_Name || '');
-            setRouteDesc(firstFeature.properties?.description || firstFeature.properties?.T2_Memo || '');
+            
+            // --- ここから修正：すべての線を結合する処理 ---
+            let lineCoords: any[] = [];
+            let featureName = '';
+            let featureDesc = '';
 
-            const geomType = firstFeature.geometry.type;
-            const coords = firstFeature.geometry.coordinates;
+            geojson.features.forEach((f: any) => {
+              // タイトルと説明文は、データが存在する最初のものを採用
+              if (!featureName && (f.properties?.name || f.properties?.T1_Name)) featureName = f.properties?.name || f.properties?.T1_Name;
+              if (!featureDesc && (f.properties?.description || f.properties?.T2_Memo)) featureDesc = f.properties?.description || f.properties?.T2_Memo;
+
+              // 線データをすべて集める
+              if (f.geometry.type === 'LineString') {
+                lineCoords.push(f.geometry.coordinates);
+              } else if (f.geometry.type === 'MultiLineString') {
+                lineCoords.push(...f.geometry.coordinates);
+              }
+            });
+
+            let finalGeom;
+            if (lineCoords.length === 0) {
+               // 線がない（点のみのデータ等）場合は最初の要素をそのまま使う
+               finalGeom = geojson.features[0].geometry;
+            } else if (lineCoords.length === 1) {
+               finalGeom = { type: 'LineString', coordinates: lineCoords[0] };
+            } else {
+               finalGeom = { type: 'MultiLineString', coordinates: lineCoords };
+            }
+
+            const combinedFeature = {
+              type: 'Feature',
+              geometry: finalGeom,
+              properties: geojson.features[0].properties
+            };
+
+            setUploadData(combinedFeature);
+            setRouteTitle(featureName || '');
+            setRouteDesc(featureDesc || '');
+
+            // カメラの移動処理
             let targetLng, targetLat;
-            if (geomType === 'Point') { [targetLng, targetLat] = coords; } 
-            else if (geomType === 'LineString' || geomType === 'MultiPoint') { [targetLng, targetLat] = coords[0]; } 
-            else if (geomType === 'Polygon' || geomType === 'MultiLineString') { [targetLng, targetLat] = coords[0][0]; } 
-            else if (geomType === 'MultiPolygon') { [targetLng, targetLat] = coords[0][0][0]; }
-            if (targetLng !== undefined && targetLat !== undefined) map.current?.flyTo({ center: [targetLng, targetLat], zoom: 14 });
+            if (finalGeom.type === 'Point') { [targetLng, targetLat] = finalGeom.coordinates; } 
+            else if (finalGeom.type === 'LineString') { [targetLng, targetLat] = finalGeom.coordinates[0]; } 
+            else if (finalGeom.type === 'MultiLineString') { [targetLng, targetLat] = finalGeom.coordinates[0][0]; } 
+            
+            if (targetLng !== undefined && targetLat !== undefined) {
+              // 3000kmなどの長距離を考慮して、ズームレベルを少し引いた状態(8)にする
+              map.current?.flyTo({ center: [targetLng, targetLat], zoom: 8 }); 
+            }
+            // --- 修正ここまで ---
+
           }
         }
       } catch (err) {
