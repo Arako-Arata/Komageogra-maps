@@ -102,33 +102,35 @@ export default function MapPage() {
       
       map.current?.addLayer({
         id: 'saved-lines-solid', type: 'line', source: 'saved-data',
-        filter: ['all', ['any', ['==', '$type', 'LineString'], ['==', '$type', 'Polygon']], ['==', 'style', 'solid']],
+        filter: ['all', ['any', ['==', '$type', 'LineString'], ['==', '$type', 'Polygon'], ['==', '$type', 'MultiLineString']]],
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: { 'line-color': ['get', 'color'], 'line-width': ['get', 'width'], 'line-opacity': 0.8 }
       });
       
       map.current?.addLayer({
         id: 'saved-lines-dashed', type: 'line', source: 'saved-data',
-        filter: ['all', ['any', ['==', '$type', 'LineString'], ['==', '$type', 'Polygon']], ['==', 'style', 'dashed']],
+        filter: ['all', ['any', ['==', '$type', 'LineString'], ['==', '$type', 'Polygon'], ['==', '$type', 'MultiLineString']], ['==', 'style', 'dashed']],
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: { 'line-color': ['get', 'color'], 'line-width': ['get', 'width'], 'line-opacity': 0.8, 'line-dasharray': [2, 2] }
       });
 
       map.current?.addLayer({
         id: 'saved-points', type: 'circle', source: 'saved-data',
-        filter: ['==', '$type', 'Point'],
+        filter: ['any', ['==', '$type', 'Point'], ['==', '$type', 'MultiPoint']],
         paint: { 'circle-radius': 8, 'circle-color': ['get', 'pointColor'], 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' }
       });
 
       map.current?.addSource('preview-data', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       
       map.current?.addLayer({
-        id: 'preview-lines', type: 'line', source: 'preview-data', filter: ['any', ['==', '$type', 'LineString'], ['==', '$type', 'Polygon']],
+        id: 'preview-lines', type: 'line', source: 'preview-data', 
+        filter: ['any', ['==', '$type', 'LineString'], ['==', '$type', 'Polygon'], ['==', '$type', 'MultiLineString']],
         layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8 }
       });
 
       map.current?.addLayer({
-        id: 'preview-points', type: 'circle', source: 'preview-data', filter: ['==', '$type', 'Point'],
+        id: 'preview-points', type: 'circle', source: 'preview-data', 
+        filter: ['any', ['==', '$type', 'Point'], ['==', '$type', 'MultiPoint']],
         paint: { 'circle-radius': 8, 'circle-color': pointColor, 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' }
       });
 
@@ -137,20 +139,34 @@ export default function MapPage() {
       const interactiveLayers = ['saved-lines-solid', 'saved-lines-dashed', 'saved-points'];
       
       interactiveLayers.forEach(layerId => {
-        map.current?.on('click', layerId, (e) => {
+        map.current?.on('click', layerId, async (e) => {
           if (!e.features || e.features.length === 0) return;
           const feature = e.features[0];
           const props = feature.properties;
-          // 【変更】DL用にgeometryとpropertiesの情報も合わせて状態に保存する
-          setSelectedRoute({ 
-            id: props.id, 
-            name: props.name, 
-            description: props.description,
-            geometry: feature.geometry,
-            properties: props
-          });
-          fetchComments(props.id);
+          
+          try {
+            const { data, error } = await supabase
+              .from('routes')
+              .select('geom')
+              .eq('id', props.id)
+              .single();
+              
+            if (error) throw error;
+
+            setSelectedRoute({ 
+              id: props.id, 
+              name: props.name, 
+              description: props.description,
+              geometry: data.geom,
+              properties: props
+            });
+            fetchComments(props.id);
+          } catch (err) {
+            console.error('詳細データの取得エラー:', err);
+            alert('ルートデータの取得に失敗しました。');
+          }
         });
+        
         map.current?.on('mouseenter', layerId, () => { if (map.current) map.current.getCanvas().style.cursor = 'pointer'; });
         map.current?.on('mouseleave', layerId, () => { if (map.current) map.current.getCanvas().style.cursor = ''; });
       });
@@ -167,7 +183,7 @@ export default function MapPage() {
     } catch (e) {}
   }, [lineColor, lineWidth, lineStyle, pointColor]);
 
- const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) { setSelectedFileName(null); return; }
     setSelectedFileName(file.name);
@@ -186,32 +202,39 @@ export default function MapPage() {
           source.setData(geojson);
           if (geojson.features && geojson.features.length > 0) {
             
-            // --- ここから修正：すべての線を結合する処理 ---
             let lineCoords: any[] = [];
+            let pointCoords: any[] = [];
             let featureName = '';
             let featureDesc = '';
 
             geojson.features.forEach((f: any) => {
-              // タイトルと説明文は、データが存在する最初のものを採用
               if (!featureName && (f.properties?.name || f.properties?.T1_Name)) featureName = f.properties?.name || f.properties?.T1_Name;
-              if (!featureDesc && (f.properties?.description || f.properties?.T2_Memo)) featureDesc = f.properties?.description || f.properties?.T2_Memo;
+              
+              if (!featureDesc && (f.properties?.description || f.properties?.T2_Memo)) {
+                const desc = f.properties?.description || f.properties?.T2_Memo;
+                featureDesc = typeof desc === 'object' ? JSON.stringify(desc) : desc;
+              }
 
-              // 線データをすべて集める
               if (f.geometry.type === 'LineString') {
                 lineCoords.push(f.geometry.coordinates);
               } else if (f.geometry.type === 'MultiLineString') {
                 lineCoords.push(...f.geometry.coordinates);
+              } else if (f.geometry.type === 'Point') {
+                pointCoords.push(f.geometry.coordinates);
+              } else if (f.geometry.type === 'MultiPoint') {
+                pointCoords.push(...f.geometry.coordinates);
               }
             });
 
             let finalGeom;
-            if (lineCoords.length === 0) {
-               // 線がない（点のみのデータ等）場合は最初の要素をそのまま使う
-               finalGeom = geojson.features[0].geometry;
-            } else if (lineCoords.length === 1) {
-               finalGeom = { type: 'LineString', coordinates: lineCoords[0] };
+            if (lineCoords.length > 0) {
+              if (lineCoords.length === 1) finalGeom = { type: 'LineString', coordinates: lineCoords[0] };
+              else finalGeom = { type: 'MultiLineString', coordinates: lineCoords };
+            } else if (pointCoords.length > 0) {
+              if (pointCoords.length === 1) finalGeom = { type: 'Point', coordinates: pointCoords[0] };
+              else finalGeom = { type: 'MultiPoint', coordinates: pointCoords };
             } else {
-               finalGeom = { type: 'MultiLineString', coordinates: lineCoords };
+              finalGeom = geojson.features[0].geometry;
             }
 
             const combinedFeature = {
@@ -221,21 +244,24 @@ export default function MapPage() {
             };
 
             setUploadData(combinedFeature);
-            setRouteTitle(featureName || '');
+            
+            if (pointCoords.length > 1 && file.name) {
+               setRouteTitle(file.name.replace(/\.[^/.]+$/, ""));
+            } else {
+               setRouteTitle(featureName || '');
+            }
+            
             setRouteDesc(featureDesc || '');
 
-            // カメラの移動処理
             let targetLng, targetLat;
             if (finalGeom.type === 'Point') { [targetLng, targetLat] = finalGeom.coordinates; } 
+            else if (finalGeom.type === 'MultiPoint') { [targetLng, targetLat] = finalGeom.coordinates[0]; }
             else if (finalGeom.type === 'LineString') { [targetLng, targetLat] = finalGeom.coordinates[0]; } 
             else if (finalGeom.type === 'MultiLineString') { [targetLng, targetLat] = finalGeom.coordinates[0][0]; } 
             
             if (targetLng !== undefined && targetLat !== undefined) {
-              // 3000kmなどの長距離を考慮して、ズームレベルを少し引いた状態(8)にする
               map.current?.flyTo({ center: [targetLng, targetLat], zoom: 8 }); 
             }
-            // --- 修正ここまで ---
-
           }
         }
       } catch (err) {
@@ -299,11 +325,9 @@ export default function MapPage() {
     }
   };
 
-  // 【追加】GeoJSONのダウンロード処理
   const handleDownloadGeoJSON = () => {
     if (!selectedRoute) return;
 
-    // 保存時のデータをGeoJSONのFeature形式に再構成
     const geojsonFeature = {
       type: 'Feature',
       geometry: selectedRoute.geometry,
@@ -317,7 +341,6 @@ export default function MapPage() {
       }
     };
 
-    // Blobオブジェクトに変換してブラウザでダウンロードを発火させる
     const blob = new Blob([JSON.stringify(geojsonFeature, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -380,7 +403,6 @@ export default function MapPage() {
             <h3 style={{ margin: '0 0 5px 0', fontSize: '16px', fontWeight: 'bold' }}>{selectedRoute.name}</h3>
             <p style={{ fontSize: '13px', color: '#475569', marginBottom: '15px', whiteSpace: 'pre-wrap' }}>{selectedRoute.description}</p>
             
-            {/* 【追加】ダウンロードボタン */}
             <button 
               onClick={handleDownloadGeoJSON} 
               style={{
