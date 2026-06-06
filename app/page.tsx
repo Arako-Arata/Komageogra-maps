@@ -132,7 +132,7 @@ export default function MapPage() {
         paint: { 'circle-radius': 8, 'circle-color': pointColor, 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' }
       });
 
-        fetchSavedRoutes();
+      fetchSavedRoutes();
 
       const interactiveLayers = ['saved-lines-solid', 'saved-lines-dashed', 'saved-points'];
       
@@ -141,7 +141,14 @@ export default function MapPage() {
           if (!e.features || e.features.length === 0) return;
           const feature = e.features[0];
           const props = feature.properties;
-          setSelectedRoute({ id: props.id, name: props.name, description: props.description });
+          // 【変更】DL用にgeometryとpropertiesの情報も合わせて状態に保存する
+          setSelectedRoute({ 
+            id: props.id, 
+            name: props.name, 
+            description: props.description,
+            geometry: feature.geometry,
+            properties: props
+          });
           fetchComments(props.id);
         });
         map.current?.on('mouseenter', layerId, () => { if (map.current) map.current.getCanvas().style.cursor = 'pointer'; });
@@ -254,7 +261,36 @@ export default function MapPage() {
     }
   };
 
-  // 【追加】Discordでのログイン処理
+  // 【追加】GeoJSONのダウンロード処理
+  const handleDownloadGeoJSON = () => {
+    if (!selectedRoute) return;
+
+    // 保存時のデータをGeoJSONのFeature形式に再構成
+    const geojsonFeature = {
+      type: 'Feature',
+      geometry: selectedRoute.geometry,
+      properties: {
+        title: selectedRoute.name,
+        description: selectedRoute.description,
+        line_color: selectedRoute.properties.color,
+        line_width: selectedRoute.properties.width,
+        line_style: selectedRoute.properties.style,
+        point_color: selectedRoute.properties.pointColor,
+      }
+    };
+
+    // Blobオブジェクトに変換してブラウザでダウンロードを発火させる
+    const blob = new Blob([JSON.stringify(geojsonFeature, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${selectedRoute.name || 'route'}.geojson`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const handleDiscordLogin = async () => {
     setIsAuthLoading(true);
     const { error } = await supabase.auth.signInWithOAuth({
@@ -278,7 +314,6 @@ export default function MapPage() {
         maxHeight: 'calc(100vh - 20px)', display: 'flex', flexDirection: 'column'
       }}>
         
-        {/* 未ログインの場合はDiscordログイン画面を表示 */}
         {!session ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
             <h3 style={{ margin: '0', fontSize: '15px', fontWeight: 'bold' }}>ログインが必要です</h3>
@@ -306,6 +341,19 @@ export default function MapPage() {
             </div>
             <h3 style={{ margin: '0 0 5px 0', fontSize: '16px', fontWeight: 'bold' }}>{selectedRoute.name}</h3>
             <p style={{ fontSize: '13px', color: '#475569', marginBottom: '15px', whiteSpace: 'pre-wrap' }}>{selectedRoute.description}</p>
+            
+            {/* 【追加】ダウンロードボタン */}
+            <button 
+              onClick={handleDownloadGeoJSON} 
+              style={{
+                marginBottom: '15px', padding: '8px', fontSize: '13px', fontWeight: 'bold',
+                backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px',
+                cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center'
+              }}
+            >
+              📥 GeoJSONをダウンロード
+            </button>
+
             <hr style={{ margin: '0 0 15px 0', border: 'none', borderTop: '1px solid #ddd' }} />
             <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', fontWeight: 'bold' }}>コメント</h4>
             <div style={{ flexGrow: 1, overflowY: 'auto', marginBottom: '15px', paddingRight: '5px' }}>
@@ -365,4 +413,3 @@ export default function MapPage() {
     </div>
   );
 }
-
