@@ -100,23 +100,24 @@ export default function MapPage() {
     map.current.on('load', () => {
       map.current?.addSource('saved-data', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       
+      // 【修正】無効な MultiLineString などの指定を削除（LineString, Polygon, Point だけで全種対応可能）
       map.current?.addLayer({
         id: 'saved-lines-solid', type: 'line', source: 'saved-data',
-        filter: ['all', ['any', ['==', '$type', 'LineString'], ['==', '$type', 'Polygon'], ['==', '$type', 'MultiLineString']]],
+        filter: ['all', ['any', ['==', '$type', 'LineString'], ['==', '$type', 'Polygon']]],
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: { 'line-color': ['get', 'color'], 'line-width': ['get', 'width'], 'line-opacity': 0.8 }
       });
       
       map.current?.addLayer({
         id: 'saved-lines-dashed', type: 'line', source: 'saved-data',
-        filter: ['all', ['any', ['==', '$type', 'LineString'], ['==', '$type', 'Polygon'], ['==', '$type', 'MultiLineString']], ['==', 'style', 'dashed']],
+        filter: ['all', ['any', ['==', '$type', 'LineString'], ['==', '$type', 'Polygon']], ['==', 'style', 'dashed']],
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: { 'line-color': ['get', 'color'], 'line-width': ['get', 'width'], 'line-opacity': 0.8, 'line-dasharray': [2, 2] }
       });
 
       map.current?.addLayer({
         id: 'saved-points', type: 'circle', source: 'saved-data',
-        filter: ['any', ['==', '$type', 'Point'], ['==', '$type', 'MultiPoint']],
+        filter: ['==', '$type', 'Point'],
         paint: { 'circle-radius': 8, 'circle-color': ['get', 'pointColor'], 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' }
       });
 
@@ -124,13 +125,13 @@ export default function MapPage() {
       
       map.current?.addLayer({
         id: 'preview-lines', type: 'line', source: 'preview-data', 
-        filter: ['any', ['==', '$type', 'LineString'], ['==', '$type', 'Polygon'], ['==', '$type', 'MultiLineString']],
+        filter: ['any', ['==', '$type', 'LineString'], ['==', '$type', 'Polygon']],
         layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8 }
       });
 
       map.current?.addLayer({
         id: 'preview-points', type: 'circle', source: 'preview-data', 
-        filter: ['any', ['==', '$type', 'Point'], ['==', '$type', 'MultiPoint']],
+        filter: ['==', '$type', 'Point'],
         paint: { 'circle-radius': 8, 'circle-color': pointColor, 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' }
       });
 
