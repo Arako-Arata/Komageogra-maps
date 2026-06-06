@@ -28,7 +28,6 @@ export default function MapPage() {
   const [session, setSession] = useState<any>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
 
-  // プロフィール用の状態
   const [profile, setProfile] = useState<any>(null);
   const [deptSelect, setDeptSelect] = useState('');
   const [deptInput, setDeptInput] = useState('');
@@ -43,15 +42,13 @@ export default function MapPage() {
           id: user.id,
           display_name: user.user_metadata?.full_name || user.user_metadata?.name || 'ゲスト',
           avatar_url: user.user_metadata?.avatar_url || '',
-          department: '',
-          student_id: '' 
+          department: ''
         };
         await supabase.from('profiles').insert(newProfile);
         setProfile(newProfile);
       } else if (data) {
         setProfile(data);
         
-        // 既存の専攻データを「選択肢」か「その他」に振り分ける
         const dept = data.department || '';
         if (dept === '文化専攻' || dept === '環境専攻') {
           setDeptSelect(dept);
@@ -85,7 +82,6 @@ export default function MapPage() {
     if (!session?.user) return;
     setIsUpdatingProfile(true);
     try {
-      // 「その他」が選ばれている場合は自由入力欄の値を、そうでない場合は選択肢の値を採用
       const finalDept = deptSelect === 'その他' ? deptInput : deptSelect;
       
       const { error } = await supabase.from('profiles').update({
@@ -401,6 +397,31 @@ export default function MapPage() {
     }
   };
 
+  // 【追加】ルートと関連コメントの削除処理
+  const handleDeleteRoute = async () => {
+    if (!selectedRoute) return;
+    if (!window.confirm('このルートと関連するコメントをすべて削除します。本当によろしいですか？')) return;
+
+    setIsSaving(true);
+    try {
+      // 外部キー制約のエラーを防ぐため、まずは紐づくコメントを先に削除
+      const { error: commentError } = await supabase.from('comments').delete().eq('route_id', selectedRoute.id);
+      if (commentError) throw commentError;
+
+      // 続いてルート本体を削除
+      const { error: routeError } = await supabase.from('routes').delete().eq('id', selectedRoute.id);
+      if (routeError) throw routeError;
+
+      alert('データを削除しました。');
+      setSelectedRoute(null);
+      fetchSavedRoutes();
+    } catch (err: any) {
+      alert('削除に失敗しました: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleDownloadGeoJSON = () => {
     if (!selectedRoute) return;
 
@@ -479,16 +500,34 @@ export default function MapPage() {
             <h3 style={{ margin: '0 0 5px 0', fontSize: '16px', fontWeight: 'bold' }}>{selectedRoute.name}</h3>
             <p style={{ fontSize: '13px', color: '#475569', marginBottom: '15px', whiteSpace: 'pre-wrap' }}>{selectedRoute.description}</p>
             
-            <button 
-              onClick={handleDownloadGeoJSON} 
-              style={{
-                marginBottom: '15px', padding: '8px', fontSize: '13px', fontWeight: 'bold',
-                backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px',
-                cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center'
-              }}
-            >
-              📥 GeoJSONをダウンロード
-            </button>
+            {/* 【変更】ダウンロードボタンと削除ボタンを横並びに配置 */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}>
+              <button 
+                onClick={handleDownloadGeoJSON} 
+                style={{
+                  flex: 1, padding: '8px', fontSize: '13px', fontWeight: 'bold',
+                  backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px',
+                  cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center'
+                }}
+              >
+                📥 GeoJSON DL
+              </button>
+              
+              {/* ログインユーザーIDとルート投稿者IDが一致する場合のみ削除ボタンを表示 */}
+              {session.user.id === selectedRoute.properties.userId && (
+                <button 
+                  onClick={handleDeleteRoute} 
+                  disabled={isSaving}
+                  style={{
+                    padding: '8px 12px', fontSize: '13px', fontWeight: 'bold',
+                    backgroundColor: isSaving ? '#fca5a5' : '#ef4444', color: 'white', border: 'none', borderRadius: '4px',
+                    cursor: isSaving ? 'not-allowed' : 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center'
+                  }}
+                >
+                  {isSaving ? '処理中...' : '🗑️ 削除'}
+                </button>
+              )}
+            </div>
 
             <hr style={{ margin: '0 0 15px 0', border: 'none', borderTop: '1px solid #ddd' }} />
             <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', fontWeight: 'bold' }}>コメント</h4>
