@@ -75,14 +75,42 @@ const [selectedRoute, setSelectedRoute] = useState<any>(null);
 
   useEffect(() => {
     
+   const ALLOWED_GUILD_ID = '1049983719445889034'; // 地理研のDiscordサーバーID
+
+  useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session?.user) checkAndUpsertProfile(session.user);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // ログイン直後のみ、DiscordのAPIを叩いて所属サーバーをチェックする
+      if (event === 'SIGNED_IN' && session?.provider_token) {
+        try {
+          const res = await fetch('https://discord.com/api/users/@me/guilds', {
+            headers: { Authorization: `Bearer ${session.provider_token}` }
+          });
+          
+          if (res.ok) {
+            const guilds = await res.json();
+            const isMember = guilds.some((g: any) => g.id === ALLOWED_GUILD_ID);
+            
+            if (!isMember) {
+              alert('エラー: 地理学研究会のDiscordサーバーに参加しているメンバーのみ利用可能です。');
+              await supabase.auth.signOut(); // 強制ログアウト
+              setSession(null);
+              return; // ここで処理をストップ
+            }
+          }
+        } catch (err) {
+          console.error('サーバー参加確認に失敗しました:', err);
+        }
+      }
+
       setSession(session);
       if (session?.user) checkAndUpsertProfile(session.user);
     });
+
     return () => subscription.unsubscribe();
   }, []);
 
@@ -522,6 +550,9 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
     setIsAuthLoading(true);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'discord',
+      options: {
+        scopes: 'identify email guilds', // 参加サーバー情報を取得する権限を追加
+      }
     });
     if (error) {
       alert('ログインエラー: ' + error.message);
