@@ -622,61 +622,83 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
               </button>
             </div>
           </div>
-        ) : (
+       ) : (
           <div style={{ overflowY: 'auto', paddingRight: '5px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
               <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 'bold' }}>空間データ読み込み＆保存</h3>
               <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', cursor: 'pointer', padding: 0 }}>ログアウト</button>
             </div>
             
-           {/* プロフィール表示エリア */}
+            {/* プロフィール表示エリア */}
             <div style={{ marginBottom: '15px', padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '10px' }}>
               {profile?.avatar_url && <img src={profile.avatar_url} alt="avatar" style={{ width: '32px', height: '32px', borderRadius: '50%' }} />}
               <span style={{ fontWeight: 'bold', fontSize: '14px' }}>{profile?.display_name || '読込中...'}</span>
             </div>
 
-            <div style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', padding: '12px', backgroundColor: '#f8fafc', border: '2px dashed #cbd5e1', borderRadius: '6px', textAlign: 'center', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', color: '#475569', transition: 'background-color 0.2s ease' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e2e8f0'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}>
-                {selectedFileName ? `📂 ${selectedFileName}` : '📂 ファイルを選択 (KML / GeoJSON)'}
-                <input type="file" accept=".geojson,.json,.kml" onChange={handleFileUpload} style={{ display: 'none' }} />
-              </label>
-            </div>
-            <hr style={{ margin: '10px 0', border: 'none', borderTop: '1px solid #ddd' }} />
-            <div style={{ marginBottom: '15px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '13px', fontWeight: 'bold' }}>タイトル:</label>
-              <input type="text" value={routeTitle} onChange={(e) => setRouteTitle(e.target.value)} placeholder="例：〇〇巡検ルート" style={{ padding: '4px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px' }} />
-             <label style={{ fontSize: '13px', fontWeight: 'bold' }}>説明・メモ:</label>
-              <textarea value={routeDesc} onChange={(e) => setRouteDesc(e.target.value)} placeholder="ルートに関する詳細なメモ" style={{ padding: '4px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px', minHeight: '60px', resize: 'vertical' }} />
-              
-              <label style={{ fontSize: '13px', fontWeight: 'bold', marginTop: '4px' }}>タグ (複数選択可):</label>
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
-                {AVAILABLE_TAGS.map(tag => (
-                  <label key={tag} style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-                    <input 
-                      type="checkbox" 
-                      checked={selectedTags.includes(tag)}
-                      onChange={() => handleTagToggle(tag)}
-                    />
-                    {tag}
-                  </label>
-                ))}
-              </div>
+            {/* アップロード表示切替ボタン */}
+            <button 
+              onClick={() => setShowUploadForm(!showUploadForm)}
+              style={{ width: '100%', padding: '8px', marginBottom: '15px', fontSize: '13px', fontWeight: 'bold', backgroundColor: showUploadForm ? '#e2e8f0' : '#ffffff', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer' }}
+            >
+              {showUploadForm ? '▼ アップロードを閉じる' : '▶ 新規アップロード'}
+            </button>
 
-              <button onClick={handleSaveToDatabase} disabled={isSaving || !uploadData} style={{ marginTop: '5px', padding: '8px', fontSize: '13px', fontWeight: 'bold', backgroundColor: (isSaving || !uploadData) ? '#ccc' : '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: (isSaving || !uploadData) ? 'not-allowed' : 'pointer' }}>
-                {isSaving ? '保存中...' : 'データベースに保存'}
-              </button>
-            </div>
-            <hr style={{ margin: '10px 0', border: 'none', borderTop: '1px solid #ddd' }} />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
-              <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>線の色:</span><input type="color" value={lineColor} onChange={e => setLineColor(e.target.value)} /></label>
-              <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>太さ ({lineWidth}px):</span><input type="range" min="1" max="10" value={lineWidth} onChange={e => setLineWidth(Number(e.target.value))} /></label>
-              <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>種類:</span><select value={lineStyle} onChange={e => setLineStyle(e.target.value)}><option value="solid">実線</option><option value="dashed">破線</option></select></label>
-              <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>ピンの色:</span><input type="color" value={pointColor} onChange={e => setPointColor(e.target.value)} /></label>
-            </div>
+            {/* 将来ここにレイヤーツリーが入ります */}
+            {!showUploadForm && (
+              <div style={{ fontSize: '12px', color: '#64748b', textAlign: 'center', padding: '20px 0' }}>
+                （ここにレイヤーの一覧が表示されます）
+              </div>
+            )}
+
+            {/* フォーム全体を囲う開始部分 */}
+            {showUploadForm && (
+              <div style={{ padding: '10px', border: '1px solid #e2e8f0', borderRadius: '6px', marginBottom: '15px' }}>
+                <div style={{ marginBottom: '15px' }}>
+                  <label style={{ display: 'block', padding: '12px', backgroundColor: '#f8fafc', border: '2px dashed #cbd5e1', borderRadius: '6px', textAlign: 'center', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', color: '#475569', transition: 'background-color 0.2s ease' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e2e8f0'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}>
+                    {selectedFileName ? `📂 ${selectedFileName}` : '📂 ファイルを選択 (KML / GeoJSON)'}
+                    <input type="file" accept=".geojson,.json,.kml" onChange={handleFileUpload} style={{ display: 'none' }} />
+                  </label>
+                </div>
+                <hr style={{ margin: '10px 0', border: 'none', borderTop: '1px solid #ddd' }} />
+                <div style={{ marginBottom: '15px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{ fontSize: '13px', fontWeight: 'bold' }}>タイトル:</label>
+                  <input type="text" value={routeTitle} onChange={(e) => setRouteTitle(e.target.value)} placeholder="例：〇〇巡検ルート" style={{ padding: '4px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px' }} />
+                  <label style={{ fontSize: '13px', fontWeight: 'bold' }}>説明・メモ:</label>
+                  <textarea value={routeDesc} onChange={(e) => setRouteDesc(e.target.value)} placeholder="ルートに関する詳細なメモ" style={{ padding: '4px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px', minHeight: '60px', resize: 'vertical' }} />
+                  
+                  <label style={{ fontSize: '13px', fontWeight: 'bold', marginTop: '4px' }}>タグ (複数選択可):</label>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                    {AVAILABLE_TAGS.map(tag => (
+                      <label key={tag} style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={selectedTags.includes(tag)}
+                          onChange={() => handleTagToggle(tag)}
+                        />
+                        {tag}
+                      </label>
+                    ))}
+                  </div>
+
+
+                  <button onClick={handleSaveToDatabase} disabled={isSaving || !uploadData} style={{ marginTop: '5px', padding: '8px', fontSize: '13px', fontWeight: 'bold', backgroundColor: (isSaving || !uploadData) ? '#ccc' : '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: (isSaving || !uploadData) ? 'not-allowed' : 'pointer' }}>
+                    {isSaving ? '保存中...' : 'データベースに保存'}
+                  </button>
+                </div>
+                <hr style={{ margin: '10px 0', border: 'none', borderTop: '1px solid #ddd' }} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
+                  <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>線の色:</span><input type="color" value={lineColor} onChange={e => setLineColor(e.target.value)} /></label>
+                  <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>太さ ({lineWidth}px):</span><input type="range" min="1" max="10" value={lineWidth} onChange={e => setLineWidth(Number(e.target.value))} /></label>
+                  <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>種類:</span><select value={lineStyle} onChange={e => setLineStyle(e.target.value)}><option value="solid">実線</option><option value="dashed">破線</option></select></label>
+                  <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>ピンの色:</span><input type="color" value={pointColor} onChange={e => setPointColor(e.target.value)} /></label>
+                </div>
+              </div>
+            )}
+            
           </div>
         )}
       </div>
-   <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
+      <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
     </div>
   );
 }
