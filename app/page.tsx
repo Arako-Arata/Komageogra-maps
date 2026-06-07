@@ -1002,25 +1002,31 @@ const handleDiscordLogin = async () => {
               {showUploadForm ? '▼ アップロードを閉じる' : '▶ 新規アップロード'}
             </button>
 
-           {/* レイヤーツリーの表示エリア */}
+</div>
+         {/* ========================================================
+               ★ここからコメントアウト（削除せずに残す）
+            ======================================================== */}
+            
+            {/* 
             {!showUploadForm && (
               <div style={{ padding: '10px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '6px', marginBottom: '15px', maxHeight: '400px', overflowY: 'auto' }}>
                 
-                
                 {AVAILABLE_TAGS.map(tag => {
-                  // そのタグに属するルートを抽出（タグ無し等の古いデータは「その他」に分類）
                   const routesInTag = savedFeatures.filter(f => {
                     const tagList = f.properties.tags || [];
                     if (tag === 'その他') return tagList.includes('その他') || tagList.length === 0 || !AVAILABLE_TAGS.some(t => tagList.includes(t));
                     return tagList.includes(tag);
                   });
 
-                  if (routesInTag.length === 0) return null; // データが無ければカテゴリ自体を表示しない
+                  if (routesInTag.length === 0) return null;
 
-                  // カテゴリ内の全ルートが非表示になっているか判定
                   const isAllHidden = routesInTag.every(f => hiddenRouteIds.includes(f.properties.id));
+            */}
 
-                
+            {/* ========================================================
+               ★ここまでコメントアウト
+            ======================================================== */}
+
     return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden' }}>
       
@@ -1295,5 +1301,5 @@ const handleDiscordLogin = async () => {
       </div>
       <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
     </div>
-  );
-    }
+  ); 
+}
