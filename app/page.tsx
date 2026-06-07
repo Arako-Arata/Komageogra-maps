@@ -301,6 +301,25 @@ const features: any[] = [];
   useEffect(() => {
     if (map.current || !mapContainer.current) return;
 
+    // 【追加】ポップアップの「×」ボタンを大きく、押しやすくするCSS
+    const style = document.createElement('style');
+    style.innerHTML = `
+      .maplibregl-popup-close-button {
+        font-size: 24px !important;
+        padding: 4px 12px !important;
+        color: #64748b !important;
+        width: 40px;
+        height: 40px;
+        outline: none;
+      }
+      .maplibregl-popup-close-button:hover {
+        background-color: #f1f5f9 !important;
+        color: #ef4444 !important;
+        border-radius: 0 4px 0 0;
+      }
+    `;
+    document.head.appendChild(style);
+
     map.current = new maplibregl.Map({
       container: mapContainer.current,
       style: {
@@ -356,6 +375,28 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
         paint: { 'circle-radius': 8, 'circle-color': pointColor, 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' }
       });
 
+      map.current?.addLayer({
+        id: 'saved-points', type: 'circle', source: 'saved-data',
+        filter: ['==', '$type', 'Point'],
+        paint: { 'circle-radius': 8, 'circle-color': ['get', 'pointColor'], 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' }
+      });
+
+      // 【追加】クリックしたときに一瞬だけ白く光らせる（フラッシュ）用のレイヤー
+      map.current?.addLayer({
+        id: 'flash-lines', type: 'line', source: 'saved-data',
+        filter: ['==', 'name', ''], // 初期状態は空（何も表示しない）
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#ffffff', 'line-width': 8, 'line-opacity': 0.9 }
+      });
+
+      map.current?.addLayer({
+        id: 'flash-points', type: 'circle', source: 'saved-data',
+        filter: ['==', 'name', ''], // 初期状態は空（何も表示しない）
+        paint: { 'circle-radius': 14, 'circle-color': '#ffffff', 'circle-opacity': 0.9 }
+      });
+
+      map.current?.addSource('preview-data', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+
       fetchSavedRoutes();
 
       const interactiveLayers = ['saved-lines-solid', 'saved-lines-dashed', 'saved-points'];
@@ -366,7 +407,20 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
           const feature = e.features[0];
           const props = feature.properties;
 
-          // ポップアップを表示する位置を計算（点ならその座標、線ならクリックした位置）
+         // ▼① フラッシュ（一瞬光らせる）エフェクトの実行
+          // 対象のIDと名前が完全に一致する地物だけを白く光らせ、0.3秒後に元に戻す
+          
+          // 【修正】末尾に as any を追加してTypeScriptのエラーを黙らせる
+          const targetFilter = ['all', ['==', 'id', props.id], ['==', 'name', props.name || '']] as any;
+          
+          if (feature.geometry.type === 'Point' || feature.geometry.type === 'MultiPoint') {
+            map.current?.setFilter('flash-points', targetFilter);
+            setTimeout(() => { if (map.current) map.current.setFilter('flash-points', ['==', 'name', ''] as any); }, 300);
+          } else {
+            map.current?.setFilter('flash-lines', targetFilter);
+            setTimeout(() => { if (map.current) map.current.setFilter('flash-lines', ['==', 'name', ''] as any); }, 300);
+          }
+
           let coordinates: [number, number];
           if (feature.geometry.type === 'Point') {
             coordinates = [feature.geometry.coordinates[0], feature.geometry.coordinates[1]];
@@ -374,7 +428,6 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
             coordinates = [e.lngLat.lng, e.lngLat.lat];
           }
 
-          // タグの復元
           let parsedTags = [];
           if (typeof props.tags === 'string') {
             try { parsedTags = JSON.parse(props.tags); } catch (err) {}
@@ -382,13 +435,11 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
             parsedTags = props.tags;
           }
 
-          // ポップアップの中に表示するHTML要素（DOM）を組み立てる
           const popupDiv = document.createElement('div');
           popupDiv.style.padding = '4px';
           popupDiv.style.color = '#334155';
           popupDiv.style.fontFamily = 'sans-serif';
 
-          // タイトル
           const title = document.createElement('h4');
           title.style.margin = '0 0 4px 0';
           title.style.fontSize = '14px';
@@ -396,7 +447,6 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
           title.innerText = props.name || '名称未設定';
           popupDiv.appendChild(title);
 
-          // 親フォルダ名（もしあれば）
           if (props.originalParentName && props.originalParentName !== props.name) {
             const parentName = document.createElement('div');
             parentName.style.fontSize = '11px';
@@ -406,12 +456,33 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
             popupDiv.appendChild(parentName);
           }
 
-          // 詳細・編集画面へ進むボタン
+          // ▼② タグの表示処理（追加）
+          if (parsedTags.length > 0) {
+            const tagsDiv = document.createElement('div');
+            tagsDiv.style.display = 'flex';
+            tagsDiv.style.gap = '4px';
+            tagsDiv.style.marginBottom = '8px';
+            tagsDiv.style.flexWrap = 'wrap';
+
+            parsedTags.forEach((tag: string) => {
+              const span = document.createElement('span');
+              span.innerText = `#${tag}`;
+              span.style.backgroundColor = '#e2e8f0';
+              span.style.color = '#334155';
+              span.style.padding = '2px 8px';
+              span.style.borderRadius = '12px';
+              span.style.fontSize = '11px';
+              span.style.fontWeight = 'bold';
+              tagsDiv.appendChild(span);
+            });
+            popupDiv.appendChild(tagsDiv);
+          }
+
           const btn = document.createElement('button');
           btn.innerText = '詳細・コメント・編集';
           btn.style.width = '100%';
           btn.style.padding = '8px';
-          btn.style.marginTop = '8px';
+          btn.style.marginTop = '4px';
           btn.style.backgroundColor = '#3b82f6';
           btn.style.color = 'white';
           btn.style.border = 'none';
@@ -420,7 +491,6 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
           btn.style.fontSize = '12px';
           btn.style.fontWeight = 'bold';
 
-          // ▼ボタンが押されたら、従来の「サイドバーに詳細を表示して開く」処理を実行
           btn.onclick = async () => {
             try {
               const { data, error } = await supabase.from('routes').select('geom').eq('id', props.id).single();
@@ -434,7 +504,7 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
                 properties: { ...props, tags: parsedTags }
               });
               fetchComments(props.id);
-              setIsSidebarOpen(true); // ボタンを押した時だけサイドバーを開く
+              setIsSidebarOpen(true);
             } catch (err) {
               console.error('詳細データの取得エラー:', err);
               alert('ルートデータの取得に失敗しました。');
@@ -443,13 +513,11 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
 
           popupDiv.appendChild(btn);
 
-          // 古いポップアップが残っていれば消す（複数開くのを防ぐ）
           const existingPopups = document.getElementsByClassName('maplibregl-popup');
           for (let i = 0; i < existingPopups.length; i++) {
             existingPopups[i].remove();
           }
 
-          // マップ上にポップアップを追加
           new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '240px' })
             .setLngLat(coordinates)
             .setDOMContent(popupDiv)
