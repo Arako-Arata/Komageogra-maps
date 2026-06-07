@@ -26,9 +26,12 @@ const [routeTitle, setRouteTitle] = useState('');
 
 const [selectedRoute, setSelectedRoute] = useState<any>(null);
   const [comments, setComments] = useState<any[]>([]);
-  const [showUploadForm, setShowUploadForm] = useState(false); // アップロード画面の表示切替用
   const [newComment, setNewComment] = useState('');
+  const [showUploadForm, setShowUploadForm] = useState(false); // アップロード画面の表示切替用
 
+  // 【追加】レイヤーツリー制御用のState
+  const [savedFeatures, setSavedFeatures] = useState<any[]>([]); // 取得した全ルートデータ
+  const [hiddenRouteIds, setHiddenRouteIds] = useState<string[]>([]); // 非表示に設定されたルートのID
   const [session, setSession] = useState<any>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
 
@@ -125,14 +128,21 @@ const [selectedRoute, setSelectedRoute] = useState<any>(null);
         }
       }));
 
-      const source = map.current?.getSource('saved-data') as maplibregl.GeoJSONSource;
-      if (source) {
-        source.setData({ type: 'FeatureCollection', features } as any);
-      }
+    setSavedFeatures(features); // 取得したデータをStateに保持する
     } catch (err) {
       console.error('データの取得エラー:', err);
     }
   };
+
+ // 【追加】表示状態（hiddenRouteIds）やデータが変化したときに地図の描画を更新する
+  useEffect(() => {
+    const source = map.current?.getSource('saved-data') as maplibregl.GeoJSONSource;
+    if (source) {
+      // hiddenRouteIdsに含まれていない（表示すべき）ルートだけを抽出
+      const visibleFeatures = savedFeatures.filter(f => !hiddenRouteIds.includes(f.properties.id));
+      source.setData({ type: 'FeatureCollection', features: visibleFeatures } as any);
+    }
+  }, [savedFeatures, hiddenRouteIds]);
 
   const fetchComments = async (routeId: string) => {
     try {
@@ -638,10 +648,73 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
               {showUploadForm ? '▼ アップロードを閉じる' : '▶ 新規アップロード'}
             </button>
 
-            {/* 将来ここにレイヤーツリーが入ります */}
+           {/* レイヤーツリーの表示エリア */}
             {!showUploadForm && (
-              <div style={{ fontSize: '12px', color: '#64748b', textAlign: 'center', padding: '20px 0' }}>
-                （ここにレイヤーの一覧が表示されます）
+              <div style={{ padding: '10px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '6px', marginBottom: '15px', maxHeight: '400px', overflowY: 'auto' }}>
+                <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', fontWeight: 'bold', color: '#334155' }}>レイヤー一覧</h4>
+                
+                {AVAILABLE_TAGS.map(tag => {
+                  // そのタグに属するルートを抽出（タグ無し等の古いデータは「その他」に分類）
+                  const routesInTag = savedFeatures.filter(f => {
+                    const tagList = f.properties.tags || [];
+                    if (tag === 'その他') return tagList.includes('その他') || tagList.length === 0 || !AVAILABLE_TAGS.some(t => tagList.includes(t));
+                    return tagList.includes(tag);
+                  });
+
+                  if (routesInTag.length === 0) return null; // データが無ければカテゴリ自体を表示しない
+
+                  // カテゴリ内の全ルートが非表示になっているか判定
+                  const isAllHidden = routesInTag.every(f => hiddenRouteIds.includes(f.properties.id));
+
+                  return (
+                    <div key={tag} style={{ marginBottom: '12px' }}>
+                      {/* カテゴリ（親）のチェックボックス */}
+                      <label style={{ fontWeight: 'bold', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: '#0f172a' }}>
+                        <input
+                          type="checkbox"
+                          checked={!isAllHidden}
+                          onChange={() => {
+                            if (isAllHidden) {
+                              // 全て表示（hiddenから除外）
+                              setHiddenRouteIds(prev => prev.filter(id => !routesInTag.find(f => f.properties.id === id)));
+                            } else {
+                              // 全て非表示（hiddenに追加）
+                              const idsToHide = routesInTag.map(f => f.properties.id);
+                              setHiddenRouteIds(prev => Array.from(new Set([...prev, ...idsToHide])));
+                            }
+                          }}
+                        />
+                        📁 {tag}
+                      </label>
+                      
+                      {/* ルート（子）のチェックボックス一覧 */}
+                      <div style={{ marginLeft: '24px', display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
+                        {routesInTag.map(route => (
+                          <label key={route.properties.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', color: '#475569' }}>
+                            <input
+                              type="checkbox"
+                              checked={!hiddenRouteIds.includes(route.properties.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setHiddenRouteIds(prev => prev.filter(id => id !== route.properties.id));
+                                } else {
+                                  setHiddenRouteIds(prev => [...prev, route.properties.id]);
+                                }
+                              }}
+                            />
+                            {/* ルートの色を示す小さな丸 */}
+                            <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: route.properties.color, border: '1px solid #cbd5e1' }} />
+                            {route.properties.name}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {savedFeatures.length === 0 && (
+                  <p style={{ fontSize: '12px', color: '#94a3b8', textAlign: 'center' }}>保存されたデータはありません</p>
+                )}
               </div>
             )}
 
