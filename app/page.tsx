@@ -361,41 +361,104 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
       const interactiveLayers = ['saved-lines-solid', 'saved-lines-dashed', 'saved-points'];
       
       interactiveLayers.forEach(layerId => {
-        map.current?.on('click', layerId, async (e) => {
-          if (!e.features || e.features.length === 0) return;
+        map.current?.on('click', layerId, (e) => {
+          if (!e.features || e.features.length === 0 || !map.current) return;
           const feature = e.features[0];
           const props = feature.properties;
-          
-          try {
-           const { data, error } = await supabase
-              .from('routes')
-              .select('geom')
-              .eq('id', props.id)
-              .single();
-              
-            if (error) throw error;
 
-            // MapLibreによって文字列化された配列を元のリストに戻す（エラー回避）
-            let parsedTags = [];
-            if (typeof props.tags === 'string') {
-              try { parsedTags = JSON.parse(props.tags); } catch (e) {}
-            } else if (Array.isArray(props.tags)) {
-              parsedTags = props.tags;
-            }
-
-            setSelectedRoute({ 
-              id: props.id, 
-              name: props.name, 
-              description: props.description,
-              geometry: data.geom,
-              properties: { ...props, tags: parsedTags }
-            });
-            fetchComments(props.id);
-          } catch (err) {
-            console.error('詳細データの取得エラー:', err);
-            alert('ルートデータの取得に失敗しました。');
+          // ポップアップを表示する位置を計算（点ならその座標、線ならクリックした位置）
+          let coordinates: [number, number];
+          if (feature.geometry.type === 'Point') {
+            coordinates = [feature.geometry.coordinates[0], feature.geometry.coordinates[1]];
+          } else {
+            coordinates = [e.lngLat.lng, e.lngLat.lat];
           }
+
+          // タグの復元
+          let parsedTags = [];
+          if (typeof props.tags === 'string') {
+            try { parsedTags = JSON.parse(props.tags); } catch (err) {}
+          } else if (Array.isArray(props.tags)) {
+            parsedTags = props.tags;
+          }
+
+          // ポップアップの中に表示するHTML要素（DOM）を組み立てる
+          const popupDiv = document.createElement('div');
+          popupDiv.style.padding = '4px';
+          popupDiv.style.color = '#334155';
+          popupDiv.style.fontFamily = 'sans-serif';
+
+          // タイトル
+          const title = document.createElement('h4');
+          title.style.margin = '0 0 4px 0';
+          title.style.fontSize = '14px';
+          title.style.fontWeight = 'bold';
+          title.innerText = props.name || '名称未設定';
+          popupDiv.appendChild(title);
+
+          // 親フォルダ名（もしあれば）
+          if (props.originalParentName && props.originalParentName !== props.name) {
+            const parentName = document.createElement('div');
+            parentName.style.fontSize = '11px';
+            parentName.style.color = '#64748b';
+            parentName.style.marginBottom = '6px';
+            parentName.innerText = `📁 ${props.originalParentName}`;
+            popupDiv.appendChild(parentName);
+          }
+
+          // 詳細・編集画面へ進むボタン
+          const btn = document.createElement('button');
+          btn.innerText = '詳細・コメント・編集';
+          btn.style.width = '100%';
+          btn.style.padding = '8px';
+          btn.style.marginTop = '8px';
+          btn.style.backgroundColor = '#3b82f6';
+          btn.style.color = 'white';
+          btn.style.border = 'none';
+          btn.style.borderRadius = '4px';
+          btn.style.cursor = 'pointer';
+          btn.style.fontSize = '12px';
+          btn.style.fontWeight = 'bold';
+
+          // ▼ボタンが押されたら、従来の「サイドバーに詳細を表示して開く」処理を実行
+          btn.onclick = async () => {
+            try {
+              const { data, error } = await supabase.from('routes').select('geom').eq('id', props.id).single();
+              if (error) throw error;
+
+              setSelectedRoute({
+                id: props.id,
+                name: props.name,
+                description: props.description,
+                geometry: data.geom,
+                properties: { ...props, tags: parsedTags }
+              });
+              fetchComments(props.id);
+              setIsSidebarOpen(true); // ボタンを押した時だけサイドバーを開く
+            } catch (err) {
+              console.error('詳細データの取得エラー:', err);
+              alert('ルートデータの取得に失敗しました。');
+            }
+          };
+
+          popupDiv.appendChild(btn);
+
+          // 古いポップアップが残っていれば消す（複数開くのを防ぐ）
+          const existingPopups = document.getElementsByClassName('maplibregl-popup');
+          for (let i = 0; i < existingPopups.length; i++) {
+            existingPopups[i].remove();
+          }
+
+          // マップ上にポップアップを追加
+          new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '240px' })
+            .setLngLat(coordinates)
+            .setDOMContent(popupDiv)
+            .addTo(map.current);
         });
+
+        map.current?.on('mouseenter', layerId, () => { if (map.current) map.current.getCanvas().style.cursor = 'pointer'; });
+        map.current?.on('mouseleave', layerId, () => { if (map.current) map.current.getCanvas().style.cursor = ''; });
+      });
         
         map.current?.on('mouseenter', layerId, () => { if (map.current) map.current.getCanvas().style.cursor = 'pointer'; });
         map.current?.on('mouseleave', layerId, () => { if (map.current) map.current.getCanvas().style.cursor = ''; });
