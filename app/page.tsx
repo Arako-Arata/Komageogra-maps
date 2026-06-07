@@ -651,7 +651,7 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
            {/* レイヤーツリーの表示エリア */}
             {!showUploadForm && (
               <div style={{ padding: '10px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '6px', marginBottom: '15px', maxHeight: '400px', overflowY: 'auto' }}>
-                <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', fontWeight: 'bold', color: '#334155' }}>レイヤー一覧</h4>
+                
                 
                 {AVAILABLE_TAGS.map(tag => {
                   // そのタグに属するルートを抽出（タグ無し等の古いデータは「その他」に分類）
