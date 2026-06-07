@@ -39,6 +39,7 @@ const [session, setSession] = useState<any>(null);
   const [isEditingRoute, setIsEditingRoute] = useState(false); // 追加: ルート編集モード切替
   const [editTitle, setEditTitle] = useState(''); // 追加: 編集用タイトル
   const [editDesc, setEditDesc] = useState(''); // 追加: 編集用説明
+  const [editTag, setEditTag] = useState<string>(''); // 追加: 編集用タグ
 
   const [profile, setProfile] = useState<any>(null);
   const [deptSelect, setDeptSelect] = useState('');
@@ -604,25 +605,39 @@ const handleUpdateRoute = async () => {
         });
       }
 
-      // 3. 確実に DB を更新
-      const { error: updateError } = await supabase
+     // 3. 確実に DB を更新し、更新されたデータを受け取る（.select() を追加）
+      const newTags = editTag ? [editTag] : []; // 単一選択を配列に戻す
+
+      const { data: updatedRows, error: updateError } = await supabase
         .from('routes')
         .update({
           title: newTitle,
           description: newDesc,
-          features_data: newFeaturesData
+          features_data: newFeaturesData,
+          tags: newTags // タグの更新を追加
         })
-        .eq('id', selectedRoute.id);
+        .eq('id', selectedRoute.id)
+        .select();
         
       if (updateError) throw updateError;
+      
+      // 更新された行が0件の場合（権限不足などで弾かれた場合）
+      if (!updatedRows || updatedRows.length === 0) {
+        throw new Error('更新権限がないか、データがありません。(RLSの設定を確認してください)');
+      }
 
       alert('更新しました');
       setIsEditingRoute(false);
       
       // 4. 最新の状態を再取得
       await fetchSavedRoutes(); 
-      // 画面の表示を最新データに合わせて更新
-      setSelectedRoute((prev: any) => ({ ...prev, name: editTitle, description: editDesc }));
+      // 画面の表示を最新データに合わせて更新（タグも反映）
+      setSelectedRoute((prev: any) => ({ 
+        ...prev, 
+        name: editTitle, 
+        description: editDesc,
+        properties: { ...prev.properties, tags: newTags } 
+      }));
       
     } catch (err: any) {
       alert('更新に失敗しました: ' + err.message);
