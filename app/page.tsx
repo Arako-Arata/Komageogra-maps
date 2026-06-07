@@ -375,6 +375,12 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
         paint: { 'circle-radius': 8, 'circle-color': pointColor, 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' }
       });
 
+      fetchSavedRoutes();
+
+      const interactiveLayers = ['saved-lines-solid', 'saved-lines-dashed', 'saved-points'];
+      
+      interactiveLayers.forEach(layerId => {
+
       map.current?.addLayer({
         id: 'saved-points', type: 'circle', source: 'saved-data',
         filter: ['==', '$type', 'Point'],
