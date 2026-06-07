@@ -360,7 +360,7 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
 
       const interactiveLayers = ['saved-lines-solid', 'saved-lines-dashed', 'saved-points'];
       
-      interactiveLayers.forEach(layerId => {
+    interactiveLayers.forEach(layerId => {
         map.current?.on('click', layerId, (e) => {
           if (!e.features || e.features.length === 0 || !map.current) return;
           const feature = e.features[0];
@@ -459,12 +459,8 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
         map.current?.on('mouseenter', layerId, () => { if (map.current) map.current.getCanvas().style.cursor = 'pointer'; });
         map.current?.on('mouseleave', layerId, () => { if (map.current) map.current.getCanvas().style.cursor = ''; });
       });
-        
-        map.current?.on('mouseenter', layerId, () => { if (map.current) map.current.getCanvas().style.cursor = 'pointer'; });
-        map.current?.on('mouseleave', layerId, () => { if (map.current) map.current.getCanvas().style.cursor = ''; });
-      });
-    });
-  }, []);
+    }); // ←★ここが消えていた可能性が高いです！（map.current.on('load') の閉じカッコ）
+  }, []); // ←★エラーが出ていた箇所（useEffect の閉じカッコ）
 
   useEffect(() => {
     if (!map.current || !map.current.isStyleLoaded()) return;
