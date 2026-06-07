@@ -34,6 +34,7 @@ const [selectedRoute, setSelectedRoute] = useState<any>(null);
   const [hiddenRouteIds, setHiddenRouteIds] = useState<string[]>([]); // 非表示に設定されたルートのID
   const [session, setSession] = useState<any>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(true); // 追加：認証チェック中のフラグ
 
   const [profile, setProfile] = useState<any>(null);
   const [deptSelect, setDeptSelect] = useState('');
@@ -73,49 +74,66 @@ const [selectedRoute, setSelectedRoute] = useState<any>(null);
     }
   };
 
-     const ALLOWED_GUILD_ID = '1049983719445889034';
+    const ALLOWED_GUILD_ID = '1049983719445889034';
 
   useEffect(() => {
+    // URLに認証の戻り値（ハッシュ）が含まれているかチェック
+    const isRedirecting = typeof window !== 'undefined' && window.location.hash.includes('access_token');
+    if (!isRedirecting) setIsVerifying(false);
+
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session?.user) checkAndUpsertProfile(session.user);
+      // リダイレクト処理中でなければ、すぐにセッションを復元する
+      if (!isRedirecting) {
+        setSession(session);
+        if (session?.user) checkAndUpsertProfile(session.user);
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN') {
         if (session?.provider_token) {
+          setIsVerifying(true);
           try {
             const res = await fetch('https://discord.com/api/users/@me/guilds', {
               headers: { Authorization: `Bearer ${session.provider_token}` }
             });
-            
+
             if (res.ok) {
               const guilds = await res.json();
               const isMember = guilds.some((g: any) => g.id === ALLOWED_GUILD_ID);
-              
+
               if (!isMember) {
                 alert('エラー: 地理学研究会のDiscordサーバーに参加しているメンバーのみ利用可能です。');
                 await supabase.auth.signOut();
                 setSession(null);
+                setIsVerifying(false);
                 return;
               }
             } else {
               alert('サーバー情報が取得できませんでした。権限を許可してください。');
               await supabase.auth.signOut();
               setSession(null);
+              setIsVerifying(false);
               return;
             }
           } catch (err) {
             console.error('サーバー参加確認に失敗しました:', err);
             await supabase.auth.signOut();
             setSession(null);
+            setIsVerifying(false);
             return;
           }
         }
+        
+        // チェックを無事に通過した、または既存セッションの復元時のみ画面を表示
+        setSession(session);
+        if (session?.user) checkAndUpsertProfile(session.user);
+        setIsVerifying(false);
+        
+      } else if (event === 'SIGNED_OUT') {
+        setSession(null);
+        setIsVerifying(false);
       }
-
-      setSession(session);
-      if (session?.user) checkAndUpsertProfile(session.user);
     });
 
     return () => subscription.unsubscribe();
@@ -580,22 +598,30 @@ const handleDiscordLogin = async () => {
         maxHeight: 'calc(100vh - 20px)', display: 'flex', flexDirection: 'column'
       }}>
         
-        {!session ? (
+      {!session ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            <h3 style={{ margin: '0', fontSize: '15px', fontWeight: 'bold' }}>ログインが必要です</h3>
-            <p style={{ margin: '0', fontSize: '12px', color: '#475569' }}>
-              地理研のDiscordアカウントを使用してログインしてください。
-            </p>
-            <button 
-              onClick={handleDiscordLogin} disabled={isAuthLoading} 
-              style={{
-                width: '100%', padding: '10px', fontSize: '14px', fontWeight: 'bold',
-                backgroundColor: '#5865F2', color: 'white', border: 'none', borderRadius: '4px',
-                cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center'
-              }}
-            >
-              Discordでログイン
-            </button>
+            {isVerifying ? (
+              <div style={{ padding: '20px', textAlign: 'center', color: '#3b82f6', fontSize: '14px', fontWeight: 'bold' }}>
+                ⏳ 認証状態を確認中...
+              </div>
+            ) : (
+              <>
+                <h3 style={{ margin: '0', fontSize: '15px', fontWeight: 'bold' }}>ログインが必要です</h3>
+                <p style={{ margin: '0', fontSize: '12px', color: '#475569' }}>
+                  地理研のDiscordアカウントを使用してログインしてください。
+                </p>
+                <button 
+                  onClick={handleDiscordLogin} disabled={isAuthLoading} 
+                  style={{
+                    width: '100%', padding: '10px', fontSize: '14px', fontWeight: 'bold',
+                    backgroundColor: '#5865F2', color: 'white', border: 'none', borderRadius: '4px',
+                    cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center'
+                  }}
+                >
+                  Discordでログイン
+                </button>
+              </>
+            )}
           </div>
         ) : selectedRoute ? (
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
