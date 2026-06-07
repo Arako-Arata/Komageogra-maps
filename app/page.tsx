@@ -169,7 +169,7 @@ export default function MapPage() {
       
       map.current?.addLayer({
         id: 'saved-lines-solid', type: 'line', source: 'saved-data',
-        filter: ['all', ['any', ['==', '$type', 'LineString'], ['==', '$type', 'Polygon']]],
+        filter: ['all', ['any', ['==', '$type', 'LineString'], ['==', '$type', 'Polygon']], ['!=', 'style', 'dashed']],
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: { 'line-color': ['get', 'color'], 'line-width': ['get', 'width'], 'line-opacity': 0.8 }
       });
@@ -192,7 +192,7 @@ export default function MapPage() {
       map.current?.addLayer({
         id: 'preview-lines', type: 'line', source: 'preview-data', 
         filter: ['any', ['==', '$type', 'LineString'], ['==', '$type', 'Polygon']],
-        layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8 }
+        layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 'line-dasharray': lineType === 'dashed' ? [4, 2] : [1, 0] }
       });
 
       map.current?.addLayer({
