@@ -298,10 +298,10 @@ const features: any[] = [];
 
   
 
-  useEffect(() => {
+ useEffect(() => {
     if (map.current || !mapContainer.current) return;
 
-    // 【追加】ポップアップの「×」ボタンを大きく、押しやすくするCSS
+    // ポップアップの「×」ボタンを大きく、押しやすくするCSS
     const style = document.createElement('style');
     style.innerHTML = `
       .maplibregl-popup-close-button {
@@ -332,22 +332,22 @@ const features: any[] = [];
         },
         layers: [{ id: 'gsi_pale_layer', type: 'raster', source: 'gsi_pale', minzoom: 2, maxzoom: 18 }]
       },
-   center: [139.658630, 35.628857], // 駒澤大学付近（経度, 緯度）
-      zoom: 9 // 関東広域が見える縮尺
+      center: [139.658630, 35.628857],
+      zoom: 9
     });
 
     map.current.addControl(new maplibregl.NavigationControl(), 'top-right');
 
     map.current.on('load', () => {
       map.current?.addSource('saved-data', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-      
+
       map.current?.addLayer({
         id: 'saved-lines-solid', type: 'line', source: 'saved-data',
         filter: ['all', ['any', ['==', '$type', 'LineString'], ['==', '$type', 'Polygon']], ['!=', 'style', 'dashed']],
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: { 'line-color': ['get', 'color'], 'line-width': ['get', 'width'], 'line-opacity': 0.8 }
       });
-      
+
       map.current?.addLayer({
         id: 'saved-lines-dashed', type: 'line', source: 'saved-data',
         filter: ['all', ['any', ['==', '$type', 'LineString'], ['==', '$type', 'Polygon']], ['==', 'style', 'dashed']],
@@ -361,16 +361,31 @@ const features: any[] = [];
         paint: { 'circle-radius': 8, 'circle-color': ['get', 'pointColor'], 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' }
       });
 
-      map.current?.addSource('preview-data', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-      
+      // フラッシュ用のレイヤー
       map.current?.addLayer({
-        id: 'preview-lines', type: 'line', source: 'preview-data', 
-        filter: ['any', ['==', '$type', 'LineString'], ['==', '$type', 'Polygon']],
-paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 'line-dasharray': lineStyle === 'dashed' ? [2, 2] : [1, 0] }
+        id: 'flash-lines', type: 'line', source: 'saved-data',
+        filter: ['==', 'name', ''],
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#ffffff', 'line-width': 8, 'line-opacity': 0.9 }
       });
 
       map.current?.addLayer({
-        id: 'preview-points', type: 'circle', source: 'preview-data', 
+        id: 'flash-points', type: 'circle', source: 'saved-data',
+        filter: ['==', 'name', ''],
+        paint: { 'circle-radius': 14, 'circle-color': '#ffffff', 'circle-opacity': 0.9 }
+      });
+
+      // プレビュー用レイヤー
+      map.current?.addSource('preview-data', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+
+      map.current?.addLayer({
+        id: 'preview-lines', type: 'line', source: 'preview-data',
+        filter: ['any', ['==', '$type', 'LineString'], ['==', '$type', 'Polygon']],
+        paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 'line-dasharray': lineStyle === 'dashed' ? [2, 2] : [1, 0] }
+      });
+
+      map.current?.addLayer({
+        id: 'preview-points', type: 'circle', source: 'preview-data',
         filter: ['==', '$type', 'Point'],
         paint: { 'circle-radius': 8, 'circle-color': pointColor, 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' }
       });
@@ -378,47 +393,15 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
       fetchSavedRoutes();
 
       const interactiveLayers = ['saved-lines-solid', 'saved-lines-dashed', 'saved-points'];
-      
+
       interactiveLayers.forEach(layerId => {
-
-      map.current?.addLayer({
-        id: 'saved-points', type: 'circle', source: 'saved-data',
-        filter: ['==', '$type', 'Point'],
-        paint: { 'circle-radius': 8, 'circle-color': ['get', 'pointColor'], 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' }
-      });
-
-      // 【追加】クリックしたときに一瞬だけ白く光らせる（フラッシュ）用のレイヤー
-      map.current?.addLayer({
-        id: 'flash-lines', type: 'line', source: 'saved-data',
-        filter: ['==', 'name', ''], // 初期状態は空（何も表示しない）
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#ffffff', 'line-width': 8, 'line-opacity': 0.9 }
-      });
-
-      map.current?.addLayer({
-        id: 'flash-points', type: 'circle', source: 'saved-data',
-        filter: ['==', 'name', ''], // 初期状態は空（何も表示しない）
-        paint: { 'circle-radius': 14, 'circle-color': '#ffffff', 'circle-opacity': 0.9 }
-      });
-
-      map.current?.addSource('preview-data', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-
-      fetchSavedRoutes();
-
-      const interactiveLayers = ['saved-lines-solid', 'saved-lines-dashed', 'saved-points'];
-      
-    interactiveLayers.forEach(layerId => {
         map.current?.on('click', layerId, (e) => {
           if (!e.features || e.features.length === 0 || !map.current) return;
           const feature = e.features[0];
           const props = feature.properties;
 
-         // ▼① フラッシュ（一瞬光らせる）エフェクトの実行
-          // 対象のIDと名前が完全に一致する地物だけを白く光らせ、0.3秒後に元に戻す
-          
-          // 【修正】末尾に as any を追加してTypeScriptのエラーを黙らせる
           const targetFilter = ['all', ['==', 'id', props.id], ['==', 'name', props.name || '']] as any;
-          
+
           if (feature.geometry.type === 'Point' || feature.geometry.type === 'MultiPoint') {
             map.current?.setFilter('flash-points', targetFilter);
             setTimeout(() => { if (map.current) map.current.setFilter('flash-points', ['==', 'name', ''] as any); }, 300);
@@ -462,7 +445,6 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
             popupDiv.appendChild(parentName);
           }
 
-          // ▼② タグの表示処理（追加）
           if (parsedTags.length > 0) {
             const tagsDiv = document.createElement('div');
             tagsDiv.style.display = 'flex';
@@ -527,14 +509,14 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
           new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '240px' })
             .setLngLat(coordinates)
             .setDOMContent(popupDiv)
-            .addTo(map.current);
+            .addTo(map.current!);
         });
 
         map.current?.on('mouseenter', layerId, () => { if (map.current) map.current.getCanvas().style.cursor = 'pointer'; });
         map.current?.on('mouseleave', layerId, () => { if (map.current) map.current.getCanvas().style.cursor = ''; });
       });
-    }); // ←★ここが消えていた可能性が高いです！（map.current.on('load') の閉じカッコ）
-  }, []); // ←★エラーが出ていた箇所（useEffect の閉じカッコ）
+    });
+  }, []);
 
   useEffect(() => {
     if (!map.current || !map.current.isStyleLoaded()) return;
