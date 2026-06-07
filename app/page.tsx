@@ -660,7 +660,7 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
           </div>
         )}
       </div>
-      <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
+   <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
     </div>
   );
 }
