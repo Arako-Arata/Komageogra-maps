@@ -84,42 +84,43 @@ const [selectedRoute, setSelectedRoute] = useState<any>(null);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // ログイン直後のみ、DiscordのAPIを叩いて所属サーバーをチェックする
-      if (event === 'SIGNED_IN' && session?.provider_token) {
-        try {
-          const res = await fetch('https://discord.com/api/users/@me/guilds', {
-            headers: { Authorization: `Bearer ${session.provider_token}` }
-          });
-          
-          if (res.ok) {
-            const guilds = await res.json();
-            const isMember = guilds.some((g: any) => g.id === ALLOWED_GUILD_ID);
+      if (event === 'SIGNED_IN') {
+        // Discordの認証直後、provider_tokenを持っている場合のみチェックを実行
+        if (session?.provider_token) {
+          try {
+            const res = await fetch('https://discord.com/api/users/@me/guilds', {
+              headers: { Authorization: `Bearer ${session.provider_token}` }
+            });
             
-            if (!isMember) {
-              alert('エラー: 地理学研究会のDiscordサーバーに参加しているメンバーのみ利用可能です。');
+            if (res.ok) {
+              const guilds = await res.json();
+              const isMember = guilds.some((g: any) => g.id === ALLOWED_GUILD_ID);
+              
+              if (!isMember) {
+                alert('エラー: 地理学研究会のDiscordサーバーに参加しているメンバーのみ利用可能です。');
+                await supabase.auth.signOut();
+                setSession(null);
+                return;
+              }
+            } else {
+              alert('サーバー情報が取得できませんでした。権限を許可してください。');
               await supabase.auth.signOut();
               setSession(null);
               return;
             }
-          } else {
-            // 権限不足などでAPIエラーになった場合もログインをブロック
-            alert('サーバー情報が取得できませんでした。権限を許可してください。');
+          } catch (err) {
+            console.error('サーバー参加確認に失敗しました:', err);
             await supabase.auth.signOut();
             setSession(null);
             return;
           }
-        } catch (err) {
-          console.error('サーバー参加確認に失敗しました:', err);
-          await supabase.auth.signOut();
-          setSession(null);
-          return;
         }
+        // ※プロバイダトークンを持たない通常のページ更新時は、すでにDBでセッションが確立されているためそのまま通す
       }
 
       setSession(session);
       if (session?.user) checkAndUpsertProfile(session.user);
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
@@ -559,9 +560,9 @@ const handleDiscordLogin = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'discord',
       options: {
-        scopes: 'identify email guilds',
+        scopes: 'guilds', // 【修正】自動付与される項目は省き、guildsのみを追加
         queryParams: {
-          prompt: 'consent', // 確実に追加権限の同意画面を出す
+          prompt: 'consent',
         },
       }
     });
