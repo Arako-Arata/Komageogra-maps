@@ -172,13 +172,16 @@ const [session, setSession] = useState<any>(null);
         });
       }
 
-      // 3. 確実に DB を更新し、更新されたデータを受け取る（.select() を追加）
+     // 3. 確実に DB を更新し、更新されたデータを受け取る（.select() を追加）
+      const newTags = editTag ? [editTag] : []; // 単一選択を配列に戻す
+
       const { data: updatedRows, error: updateError } = await supabase
         .from('routes')
         .update({
           title: newTitle,
           description: newDesc,
-          features_data: newFeaturesData
+          features_data: newFeaturesData,
+          tags: newTags // タグの更新を追加
         })
         .eq('id', selectedRoute.id)
         .select();
@@ -195,7 +198,13 @@ const [session, setSession] = useState<any>(null);
       
       // 4. 最新の状態を再取得
       await fetchSavedRoutes(); 
-      setSelectedRoute((prev: any) => ({ ...prev, name: editTitle, description: editDesc }));
+      // 画面の表示を最新データに合わせて更新（タグも反映）
+      setSelectedRoute((prev: any) => ({ 
+        ...prev, 
+        name: editTitle, 
+        description: editDesc,
+        properties: { ...prev.properties, tags: newTags } 
+      }));
       
     } catch (err: any) {
       alert('更新に失敗しました: ' + err.message);
@@ -748,7 +757,7 @@ const handleDiscordLogin = async () => {
               <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', cursor: 'pointer', padding: 0 }}>ログアウト</button>
             </div>
 
-            {isEditingRoute ? (
+           {isEditingRoute ? (
               <div style={{ marginBottom: '15px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <input 
                   type="text" 
@@ -763,6 +772,23 @@ const handleDiscordLogin = async () => {
                   placeholder="説明・メモ"
                   style={{ padding: '6px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px', minHeight: '80px', resize: 'vertical' }}
                 />
+                
+                {/* タグ編集用のラジオボタン */}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px', marginBottom: '4px' }}>
+                  {AVAILABLE_TAGS.map(tag => (
+                    <label key={tag} style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                      <input 
+                        type="radio" 
+                        name="editRouteCategory"
+                        value={tag}
+                        checked={editTag === tag}
+                        onChange={() => setEditTag(tag)}
+                      />
+                      {tag}
+                    </label>
+                  ))}
+                </div>
+
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button onClick={handleUpdateRoute} disabled={isSaving || !editTitle.trim()} style={{ flex: 1, padding: '8px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: (isSaving || !editTitle.trim()) ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '13px' }}>{isSaving ? '保存中...' : '💾 保存'}</button>
                   <button onClick={() => setIsEditingRoute(false)} disabled={isSaving} style={{ flex: 1, padding: '8px', backgroundColor: '#e2e8f0', color: '#334155', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>キャンセル</button>
@@ -799,8 +825,17 @@ const handleDiscordLogin = async () => {
                   
                   {session.user.id === selectedRoute.properties.userId && (
                     <>
-                      <button 
-                        onClick={() => { setEditTitle(selectedRoute.name); setEditDesc(selectedRoute.description || ''); setIsEditingRoute(true); }}
+                   <button 
+                        onClick={() => { 
+                          setEditTitle(selectedRoute.name); 
+                          setEditDesc(selectedRoute.description || ''); 
+                          // 現在のタグを読み込む（配列の最初の要素、無ければ空文字）
+                          const currentTag = selectedRoute.properties.tags && selectedRoute.properties.tags.length > 0 
+                            ? selectedRoute.properties.tags[0] 
+                            : '';
+                          setEditTag(currentTag);
+                          setIsEditingRoute(true); 
+                        }}
                         style={{ padding: '8px 12px', fontSize: '13px', fontWeight: 'bold', backgroundColor: '#f59e0b', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
                       >
                         ✏️ 編集
