@@ -32,9 +32,13 @@ const [selectedRoute, setSelectedRoute] = useState<any>(null);
   // 【追加】レイヤーツリー制御用のState
   const [savedFeatures, setSavedFeatures] = useState<any[]>([]); // 取得した全ルートデータ
   const [hiddenRouteIds, setHiddenRouteIds] = useState<string[]>([]); // 非表示に設定されたルートのID
-  const [session, setSession] = useState<any>(null);
+const [session, setSession] = useState<any>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [isVerifying, setIsVerifying] = useState(true); // 追加：認証チェック中のフラグ
+  
+  const [isEditingRoute, setIsEditingRoute] = useState(false); // 追加: ルート編集モード切替
+  const [editTitle, setEditTitle] = useState(''); // 追加: 編集用タイトル
+  const [editDesc, setEditDesc] = useState(''); // 追加: 編集用説明
 
   const [profile, setProfile] = useState<any>(null);
   const [deptSelect, setDeptSelect] = useState('');
@@ -530,6 +534,63 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
     }
   };
 
+  // 【追加】ルート情報の編集保存処理
+  const handleUpdateRoute = async () => {
+    if (!selectedRoute || !editTitle.trim()) return;
+    setIsSaving(true);
+    try {
+      // 1. 現在のDBデータを取得
+      const { data, error: fetchError } = await supabase.from('routes').select('title, description, features_data').eq('id', selectedRoute.id).single();
+      if (fetchError) throw fetchError;
+
+      let updatedFeaturesData = data.features_data;
+      let updatedTitle = data.title;
+
+      // 2. 個別のポイントデータか、親（全体）データかを判定して名前を上書き
+      if (selectedRoute.properties.originalParentName && selectedRoute.properties.originalParentName !== selectedRoute.name) {
+          // 子（個別ポイント）の編集
+          if (updatedFeaturesData && Array.isArray(updatedFeaturesData)) {
+              updatedFeaturesData = updatedFeaturesData.map((f: any) => {
+                  const childName = f.properties?.name || f.properties?.T1_Name || data.title;
+                  if (childName === selectedRoute.name) {
+                      return { ...f, properties: { ...f.properties, name: editTitle } };
+                  }
+                  return f;
+              });
+          }
+      } else {
+          // 親（全体）の編集
+          updatedTitle = editTitle;
+          if (updatedFeaturesData && Array.isArray(updatedFeaturesData)) {
+              updatedFeaturesData = updatedFeaturesData.map((f: any) => {
+                  const childName = f.properties?.name || f.properties?.T1_Name || data.title;
+                  if (childName === selectedRoute.name) {
+                      return { ...f, properties: { ...f.properties, name: editTitle } };
+                  }
+                  return f;
+              });
+          }
+      }
+
+      // 3. DBを更新
+      const { error: updateError } = await supabase.from('routes').update({
+        title: updatedTitle,
+        description: editDesc,
+        features_data: updatedFeaturesData
+      }).eq('id', selectedRoute.id);
+
+      if (updateError) throw updateError;
+
+      setIsEditingRoute(false);
+      setSelectedRoute({ ...selectedRoute, name: editTitle, description: editDesc });
+      fetchSavedRoutes();
+    } catch (err: any) {
+      alert('更新に失敗しました: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleDeleteComment = async (commentId: string) => {
     if (!window.confirm('このコメントを削除しますか？')) return;
     setIsSaving(true);
@@ -626,59 +687,81 @@ const handleDiscordLogin = async () => {
         ) : selectedRoute ? (
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
-              <button onClick={() => setSelectedRoute(null)} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontWeight: 'bold', padding: 0 }}>
+            <button onClick={() => { setSelectedRoute(null); setIsEditingRoute(false); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontWeight: 'bold', padding: 0 }}>
                 ← 一覧・登録へ戻る
               </button>
               <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', cursor: 'pointer', padding: 0 }}>ログアウト</button>
             </div>
-         <h3 style={{ margin: '0 0 2px 0', fontSize: '16px', fontWeight: 'bold' }}>{selectedRoute.name}</h3>
-            
-            {/* 大元のファイル名が存在し、かつ個別名と違う場合のみ表示 */}
-            {selectedRoute.properties.originalParentName && selectedRoute.properties.originalParentName !== selectedRoute.name && (
-              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px' }}>
-                📁 {selectedRoute.properties.originalParentName}
+
+            {isEditingRoute ? (
+              <div style={{ marginBottom: '15px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <input 
+                  type="text" 
+                  value={editTitle} 
+                  onChange={(e) => setEditTitle(e.target.value)} 
+                  placeholder="タイトル"
+                  style={{ padding: '6px', fontSize: '14px', fontWeight: 'bold', border: '1px solid #ccc', borderRadius: '4px' }}
+                />
+                <textarea 
+                  value={editDesc} 
+                  onChange={(e) => setEditDesc(e.target.value)} 
+                  placeholder="説明・メモ"
+                  style={{ padding: '6px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px', minHeight: '80px', resize: 'vertical' }}
+                />
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={handleUpdateRoute} disabled={isSaving || !editTitle.trim()} style={{ flex: 1, padding: '8px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: (isSaving || !editTitle.trim()) ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '13px' }}>{isSaving ? '保存中...' : '💾 保存'}</button>
+                  <button onClick={() => setIsEditingRoute(false)} disabled={isSaving} style={{ flex: 1, padding: '8px', backgroundColor: '#e2e8f0', color: '#334155', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>キャンセル</button>
+                </div>
               </div>
+            ) : (
+              <>
+                <h3 style={{ margin: '0 0 2px 0', fontSize: '16px', fontWeight: 'bold' }}>{selectedRoute.name}</h3>
+                
+                {selectedRoute.properties.originalParentName && selectedRoute.properties.originalParentName !== selectedRoute.name && (
+                  <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px' }}>
+                    📁 {selectedRoute.properties.originalParentName}
+                  </div>
+                )}
+                
+                <p style={{ fontSize: '13px', color: '#475569', marginBottom: '10px', whiteSpace: 'pre-wrap' }}>{selectedRoute.description}</p>
+                {selectedRoute.properties.tags && selectedRoute.properties.tags.length > 0 && (
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '15px' }}>
+                    {selectedRoute.properties.tags.map((tag: string) => (
+                      <span key={tag} style={{ backgroundColor: '#e2e8f0', color: '#334155', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}>
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}>
+                  <button 
+                    onClick={handleDownloadGeoJSON} 
+                    style={{ flex: 1, padding: '8px', fontSize: '13px', fontWeight: 'bold', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
+                  >
+                    📥 GeoJSON DL
+                  </button>
+                  
+                  {session.user.id === selectedRoute.properties.userId && (
+                    <>
+                      <button 
+                        onClick={() => { setEditTitle(selectedRoute.name); setEditDesc(selectedRoute.description || ''); setIsEditingRoute(true); }}
+                        style={{ padding: '8px 12px', fontSize: '13px', fontWeight: 'bold', backgroundColor: '#f59e0b', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
+                      >
+                        ✏️ 編集
+                      </button>
+                      <button 
+                        onClick={handleDeleteRoute} 
+                        disabled={isSaving}
+                        style={{ padding: '8px 12px', fontSize: '13px', fontWeight: 'bold', backgroundColor: isSaving ? '#fca5a5' : '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: isSaving ? 'not-allowed' : 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
+                      >
+                        {isSaving ? '...' : '🗑️ 削除'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </>
             )}
-            
-            <p style={{ fontSize: '13px', color: '#475569', marginBottom: '10px', whiteSpace: 'pre-wrap' }}>{selectedRoute.description}</p>
-            {selectedRoute.properties.tags && selectedRoute.properties.tags.length > 0 && (
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '15px' }}>
-                {selectedRoute.properties.tags.map((tag: string) => (
-                  <span key={tag} style={{ backgroundColor: '#e2e8f0', color: '#334155', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}>
-                    #{tag}
-                  </span>
-                ))}
-              </div>
-            )}
-            
-            {/* 【変更】ダウンロードボタンと削除ボタンを横並びに配置 */}
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}>
-              <button 
-                onClick={handleDownloadGeoJSON} 
-                style={{
-                  flex: 1, padding: '8px', fontSize: '13px', fontWeight: 'bold',
-                  backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px',
-                  cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center'
-                }}
-              >
-                📥 GeoJSON DL
-              </button>
-              
-              {/* ログインユーザーIDとルート投稿者IDが一致する場合のみ削除ボタンを表示 */}
-              {session.user.id === selectedRoute.properties.userId && (
-                <button 
-                  onClick={handleDeleteRoute} 
-                  disabled={isSaving}
-                  style={{
-                    padding: '8px 12px', fontSize: '13px', fontWeight: 'bold',
-                    backgroundColor: isSaving ? '#fca5a5' : '#ef4444', color: 'white', border: 'none', borderRadius: '4px',
-                    cursor: isSaving ? 'not-allowed' : 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center'
-                  }}
-                >
-                  {isSaving ? '処理中...' : '🗑️ 削除'}
-                </button>
-              )}
-            </div>
 
             <hr style={{ margin: '0 0 15px 0', border: 'none', borderTop: '1px solid #ddd' }} />
             <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', fontWeight: 'bold' }}>コメント</h4>
