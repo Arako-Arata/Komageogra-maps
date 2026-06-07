@@ -21,7 +21,7 @@ const [routeTitle, setRouteTitle] = useState('');
   const [selectedTag, setSelectedTag] = useState<string>(''); // 単一選択に変更
   const [isSaving, setIsSaving] = useState(false);
 
-  const AVAILABLE_TAGS = ['合宿記録', '巡検記録', 'ジオいもの(巡検ネタ帳)', '個人的', 'その他'];
+  const AVAILABLE_TAGS = ['合宿記録', '巡検記録', 'ジオい(ネタ帳)', '個人おでかけ', 'その他'];
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
 
 const [selectedRoute, setSelectedRoute] = useState<any>(null);
@@ -921,7 +921,7 @@ const handleDiscordLogin = async () => {
             
             {/* ヘッダー */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', backgroundColor: 'rgba(255, 255, 255, 0.95)', padding: '10px 12px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 'bold' }}>空間データ</h3>
+              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 'bold' }}>駒澤大学地理学研究会 空間情報倉庫</h3>
               {session && (
                 <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', cursor: 'pointer', padding: 0, fontWeight: 'bold' }}>ログアウト</button>
               )}
