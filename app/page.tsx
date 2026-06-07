@@ -827,6 +827,7 @@ const handleDiscordLogin = async () => {
                     backgroundColor: '#5865F2', color: 'white', border: 'none', borderRadius: '4px',
                     cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center'
                   }}
+                  
                 >
                   Discordでログイン
                 </button>
@@ -1277,7 +1278,4 @@ const handleDiscordLogin = async () => {
           </div>
         )}
       </div>
-      <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
-    </div>
-  );
-}
+ 
