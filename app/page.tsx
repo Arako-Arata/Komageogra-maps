@@ -21,7 +21,7 @@ const [routeTitle, setRouteTitle] = useState('');
   const [selectedTag, setSelectedTag] = useState<string>(''); // 単一選択に変更
   const [isSaving, setIsSaving] = useState(false);
 
-  const AVAILABLE_TAGS = ['合宿記録', '巡検記録', 'ジオいもの', 'その他'];
+  const AVAILABLE_TAGS = ['合宿記録', '巡検記録', 'ジオいもの(巡検ネタ帳)', '個人的', 'その他'];
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
 
 const [selectedRoute, setSelectedRoute] = useState<any>(null);
