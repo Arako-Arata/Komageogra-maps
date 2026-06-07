@@ -274,15 +274,23 @@ const features: any[] = [];
     }
   };
 
- // 【追加】表示状態（hiddenRouteIds）やデータが変化したときに地図の描画を更新する
+ // 【変更】表示状態やゲスト制限に合わせて地図の描画を更新する
   useEffect(() => {
     const source = map.current?.getSource('saved-data') as maplibregl.GeoJSONSource;
     if (source) {
-      // hiddenRouteIdsに含まれていない（表示すべき）ルートだけを抽出
-      const visibleFeatures = savedFeatures.filter(f => !hiddenRouteIds.includes(f.properties.id));
+      const visibleFeatures = savedFeatures.filter(f => {
+        // 1. 非表示チェックボックスに該当するものは弾く
+        if (hiddenRouteIds.includes(f.properties.id)) return false;
+        // 2. ログアウト状態（ゲスト）の場合は、特定のタグ以外を弾く
+        if (!session) {
+          const tags = f.properties.tags || [];
+          return tags.includes('合宿記録') || tags.includes('巡検記録');
+        }
+        return true;
+      });
       source.setData({ type: 'FeatureCollection', features: visibleFeatures } as any);
     }
-  }, [savedFeatures, hiddenRouteIds]);
+  }, [savedFeatures, hiddenRouteIds, session]);
 
   const fetchComments = async (routeId: string) => {
     try {
@@ -503,15 +511,6 @@ const features: any[] = [];
               }
             };
             popupDiv.appendChild(btn);
-          } else {
-            // ゲスト用のメッセージ
-            const guestMsg = document.createElement('div');
-            guestMsg.innerText = '※詳細を見るにはログインが必要です';
-            guestMsg.style.fontSize = '10px';
-            guestMsg.style.color = '#94a3b8';
-            guestMsg.style.marginTop = '8px';
-            guestMsg.style.textAlign = 'center';
-            popupDiv.appendChild(guestMsg);
           }
 
           const existingPopups = document.getElementsByClassName('maplibregl-popup');
@@ -1021,19 +1020,200 @@ const handleDiscordLogin = async () => {
                   // カテゴリ内の全ルートが非表示になっているか判定
                   const isAllHidden = routesInTag.every(f => hiddenRouteIds.includes(f.properties.id));
 
+                 return (
+    return (
+    <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden' }}>
+      
+      {/* メニュー開閉ボタン */}
+      <button 
+        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+        style={{
+          position: 'absolute', top: '10px', left: '10px', zIndex: 20,
+          width: '40px', height: '40px', display: 'flex', justifyContent: 'center', alignItems: 'center',
+          backgroundColor: 'white', border: '1px solid #cbd5e1', borderRadius: '8px', 
+          boxShadow: '0 2px 4px rgba(0,0,0,0.1)', cursor: 'pointer', fontSize: '20px', color: '#334155'
+        }}
+      >
+        {isSidebarOpen ? '✕' : '☰'}
+      </button>
+
+      {/* ゲスト用 ログインボタン（マップ上に配置） */}
+      {!session && !isVerifying && (
+        <button 
+          onClick={handleDiscordLogin}
+          style={{
+            position: 'absolute', top: '10px', left: '60px', zIndex: 20,
+            padding: '0 12px', height: '40px', display: 'flex', justifyContent: 'center', alignItems: 'center',
+            backgroundColor: 'white', border: '1px solid #cbd5e1', borderRadius: '8px', 
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', color: '#ef4444'
+          }}
+        >
+          ログイン
+        </button>
+      )}
+
+      {/* サイドバー（スライド式・半透明すりガラス） */}
+      <div style={{
+        position: 'absolute', top: '0', left: '0', zIndex: 10,
+        backgroundColor: 'rgba(255, 255, 255, 0.55)', // 透明度を強めに
+        backdropFilter: 'blur(10px)', // すりガラス
+        WebkitBackdropFilter: 'blur(10px)', // Safari/iOS用すりガラス
+        padding: '15px', paddingTop: '60px',
+        boxShadow: '2px 0 8px rgba(0,0,0,0.2)', color: 'black',
+        width: '100%', maxWidth: '320px', height: '100%', 
+        display: 'flex', flexDirection: 'column',
+        transform: isSidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
+        transition: 'transform 0.3s ease-in-out'
+      }}>
+        
+        {selectedRoute ? (
+          /* ================= 詳細・編集画面 ================= */
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: 'rgba(255, 255, 255, 0.95)', padding: '12px', borderRadius: '8px', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
+              <button onClick={() => { setSelectedRoute(null); setIsEditingRoute(false); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontWeight: 'bold', padding: 0 }}>
+                ← 一覧・登録へ戻る
+              </button>
+            </div>
+
+            {isEditingRoute ? (
+              <div style={{ marginBottom: '15px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <input type="text" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="タイトル" style={{ padding: '6px', fontSize: '14px', fontWeight: 'bold', border: '1px solid #ccc', borderRadius: '4px' }} />
+                <textarea value={editDesc} onChange={(e) => setEditDesc(e.target.value)} placeholder="説明・メモ" style={{ padding: '6px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px', minHeight: '80px', resize: 'vertical' }} />
+                
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px', marginBottom: '4px' }}>
+                  {AVAILABLE_TAGS.map(tag => (
+                    <label key={tag} style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                      <input type="radio" name="editRouteCategory" value={tag} checked={editTag === tag} onChange={() => setEditTag(tag)} />
+                      {tag}
+                    </label>
+                  ))}
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={handleUpdateRoute} disabled={isSaving || !editTitle.trim()} style={{ flex: 1, padding: '8px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: (isSaving || !editTitle.trim()) ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '13px' }}>{isSaving ? '保存中...' : '💾 保存'}</button>
+                  <button onClick={() => setIsEditingRoute(false)} disabled={isSaving} style={{ flex: 1, padding: '8px', backgroundColor: '#e2e8f0', color: '#334155', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>キャンセル</button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <h3 style={{ margin: '0 0 2px 0', fontSize: '16px', fontWeight: 'bold' }}>{selectedRoute.name}</h3>
+                {selectedRoute.properties.originalParentName && selectedRoute.properties.originalParentName !== selectedRoute.name && (
+                  <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px' }}>📁 {selectedRoute.properties.originalParentName}</div>
+                )}
+                <p style={{ fontSize: '13px', color: '#475569', marginBottom: '10px', whiteSpace: 'pre-wrap' }}>{selectedRoute.description}</p>
+                {selectedRoute.properties.tags && selectedRoute.properties.tags.length > 0 && (
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '15px' }}>
+                    {selectedRoute.properties.tags.map((tag: string) => (
+                      <span key={tag} style={{ backgroundColor: '#e2e8f0', color: '#334155', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}>#{tag}</span>
+                    ))}
+                  </div>
+                )}
+                
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}>
+                  <button onClick={handleDownloadGeoJSON} style={{ flex: 1, padding: '8px', fontSize: '13px', fontWeight: 'bold', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>📥 GeoJSON DL</button>
+                  
+                  {session?.user?.id === selectedRoute.properties.userId && (
+                    <>
+                      <button onClick={() => { setEditTitle(selectedRoute.name); setEditDesc(selectedRoute.description || ''); setEditTag(selectedRoute.properties.tags?.[0] || ''); setIsEditingRoute(true); }} style={{ padding: '8px 12px', fontSize: '13px', fontWeight: 'bold', backgroundColor: '#f59e0b', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✏️ 編集</button>
+                      <button onClick={handleDeleteRoute} disabled={isSaving} style={{ padding: '8px 12px', fontSize: '13px', fontWeight: 'bold', backgroundColor: isSaving ? '#fca5a5' : '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: isSaving ? 'not-allowed' : 'pointer' }}>{isSaving ? '...' : '🗑️ 削除'}</button>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+
+            <hr style={{ margin: '0 0 15px 0', border: 'none', borderTop: '1px solid #ddd' }} />
+            <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', fontWeight: 'bold' }}>コメント</h4>
+            <div style={{ flexGrow: 1, overflowY: 'auto', marginBottom: '15px', paddingRight: '5px' }}>
+              {comments.length === 0 ? (
+                <p style={{ fontSize: '12px', color: '#94a3b8' }}>まだコメントはありません。</p>
+              ) : (
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {comments.map((c) => (
+                    <li key={c.id} style={{ backgroundColor: '#f1f5f9', padding: '10px', borderRadius: '6px', fontSize: '13px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          {c.profiles?.avatar_url && <img src={c.profiles.avatar_url} alt="avatar" style={{ width: '20px', height: '20px', borderRadius: '50%' }} />}
+                          <span style={{ fontWeight: 'bold', fontSize: '12px', color: '#334155' }}>{c.profiles?.display_name || 'ゲスト'}</span>
+                        </div>
+                        {session?.user?.id === c.user_id && (
+                          <button onClick={() => handleDeleteComment(c.id)} disabled={isSaving} style={{ background: 'none', border: 'none', cursor: isSaving ? 'not-allowed' : 'pointer', fontSize: '14px', padding: '0', color: '#ef4444' }}>🗑️</button>
+                        )}
+                      </div>
+                      <div style={{ whiteSpace: 'pre-wrap' }}>{c.content}</div>
+                      <div style={{ fontSize: '11px', color: '#64748b', marginTop: '5px', textAlign: 'right' }}>{new Date(c.created_at).toLocaleString('ja-JP')}</div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
+              <textarea value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder="コメントを入力..." style={{ padding: '8px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px', resize: 'vertical', minHeight: '60px' }} />
+              <button onClick={handleSaveComment} disabled={isSaving || !newComment.trim()} style={{ padding: '8px', fontSize: '13px', fontWeight: 'bold', borderRadius: '4px', border: 'none', backgroundColor: (isSaving || !newComment.trim()) ? '#ccc' : '#3b82f6', color: 'white', cursor: (isSaving || !newComment.trim()) ? 'not-allowed' : 'pointer' }}>
+                {isSaving ? '送信中...' : '送信する'}
+              </button>
+            </div>
+          </div>
+
+        ) : (
+          /* ================= 一覧・ゲスト・登録画面 ================= */
+          <div style={{ overflowY: 'auto', paddingRight: '5px', height: '100%' }}>
+            
+            {/* ヘッダー */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', backgroundColor: 'rgba(255, 255, 255, 0.95)', padding: '10px 12px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 'bold' }}>空間データ</h3>
+              {session && (
+                <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', cursor: 'pointer', padding: 0, fontWeight: 'bold' }}>ログアウト</button>
+              )}
+            </div>
+
+            {!session && isVerifying && (
+              <div style={{ padding: '10px', textAlign: 'center', color: '#3b82f6', fontSize: '12px', fontWeight: 'bold' }}>⏳ 認証状態を確認中...</div>
+            )}
+            
+            {/* プロフィール表示エリア（ログイン時のみ） */}
+            {session && (
+              <>
+                <div style={{ marginBottom: '15px', padding: '12px', backgroundColor: 'rgba(255, 255, 255, 0.95)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  {profile?.avatar_url && <img src={profile.avatar_url} alt="avatar" style={{ width: '32px', height: '32px', borderRadius: '50%' }} />}
+                  <span style={{ fontWeight: 'bold', fontSize: '14px' }}>{profile?.display_name || '読込中...'}</span>
+                </div>
+
+                <button 
+                  onClick={() => setShowUploadForm(!showUploadForm)}
+                  style={{ width: '100%', padding: '8px', marginBottom: '15px', fontSize: '13px', fontWeight: 'bold', backgroundColor: showUploadForm ? '#e2e8f0' : '#ffffff', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer' }}
+                >
+                  {showUploadForm ? '▼ アップロードを閉じる' : '▶ 新規アップロード'}
+                </button>
+              </>
+            )}
+
+            {/* レイヤーツリー（中身は白背景で読みやすく） */}
+            {!showUploadForm && (
+              <div style={{ padding: '10px', backgroundColor: 'rgba(255, 255, 255, 0.85)', borderRadius: '8px', marginBottom: '15px', maxHeight: '500px', overflowY: 'auto' }}>
+                {AVAILABLE_TAGS.map(tag => {
+                  // ★ゲスト（非ログイン）の場合は、合宿記録と巡検記録のみ表示して他は隠す
+                  if (!session && tag !== '合宿記録' && tag !== '巡検記録') return null;
+
+                  const routesInTag = savedFeatures.filter(f => {
+                    const tagList = f.properties.tags || [];
+                    if (tag === 'その他') return tagList.includes('その他') || tagList.length === 0 || !AVAILABLE_TAGS.some(t => tagList.includes(t));
+                    return tagList.includes(tag);
+                  });
+
+                  if (routesInTag.length === 0) return null;
+                  const isAllHidden = routesInTag.every(f => hiddenRouteIds.includes(f.properties.id));
+
                   return (
                     <div key={tag} style={{ marginBottom: '12px' }}>
-                      {/* カテゴリ（親）のチェックボックス */}
                       <label style={{ fontWeight: 'bold', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: '#0f172a' }}>
                         <input
                           type="checkbox"
                           checked={!isAllHidden}
                           onChange={() => {
                             if (isAllHidden) {
-                              // 全て表示（hiddenから除外）
                               setHiddenRouteIds(prev => prev.filter(id => !routesInTag.find(f => f.properties.id === id)));
                             } else {
-                              // 全て非表示（hiddenに追加）
                               const idsToHide = routesInTag.map(f => f.properties.id);
                               setHiddenRouteIds(prev => Array.from(new Set([...prev, ...idsToHide])));
                             }
@@ -1041,12 +1221,8 @@ const handleDiscordLogin = async () => {
                         />
                         📁 {tag}
                       </label>
-                      
-                     {/* ルート（子）のチェックボックス一覧 */}
                       <div style={{ marginLeft: '24px', display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
-                        {routesInTag
-                          .filter((route, index, self) => index === self.findIndex((r) => r.properties.id === route.properties.id)) // IDで重複排除して1つにまとめる
-                          .map(route => (
+                        {routesInTag.filter((route, index, self) => index === self.findIndex((r) => r.properties.id === route.properties.id)).map(route => (
                           <label key={route.properties.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', color: '#475569' }}>
                             <input
                               type="checkbox"
@@ -1059,9 +1235,8 @@ const handleDiscordLogin = async () => {
                                 }
                               }}
                             />
-                            {/* ルートの色を示す小さな丸 */}
                             <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: route.properties.color, border: '1px solid #cbd5e1' }} />
-                            {route.properties.originalParentName || route.properties.name} {/* ツリー上は全体タイトルを表示 */}
+                            {route.properties.originalParentName || route.properties.name}
                           </label>
                         ))}
                       </div>
@@ -1075,9 +1250,9 @@ const handleDiscordLogin = async () => {
               </div>
             )}
 
-            {/* フォーム全体を囲う開始部分 */}
-            {showUploadForm && (
-              <div style={{ padding: '10px', border: '1px solid #e2e8f0', borderRadius: '6px', marginBottom: '15px' }}>
+            {/* アップロードフォーム */}
+            {session && showUploadForm && (
+              <div style={{ padding: '10px', backgroundColor: 'rgba(255, 255, 255, 0.95)', borderRadius: '8px', marginBottom: '15px' }}>
                 <div style={{ marginBottom: '15px' }}>
                   <label style={{ display: 'block', padding: '12px', backgroundColor: '#f8fafc', border: '2px dashed #cbd5e1', borderRadius: '6px', textAlign: 'center', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', color: '#475569', transition: 'background-color 0.2s ease' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e2e8f0'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}>
                     {selectedFileName ? `📂 ${selectedFileName}` : '📂 ファイルを選択 (KML / GeoJSON)'}
@@ -1091,22 +1266,15 @@ const handleDiscordLogin = async () => {
                   <label style={{ fontSize: '13px', fontWeight: 'bold' }}>説明・メモ:</label>
                   <textarea value={routeDesc} onChange={(e) => setRouteDesc(e.target.value)} placeholder="ルートに関する詳細なメモ" style={{ padding: '4px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px', minHeight: '60px', resize: 'vertical' }} />
                   
-               <label style={{ fontSize: '13px', fontWeight: 'bold', marginTop: '4px' }}>カテゴリ (1つだけ選択):</label>
+                  <label style={{ fontSize: '13px', fontWeight: 'bold', marginTop: '4px' }}>カテゴリ (1つだけ選択):</label>
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
                     {AVAILABLE_TAGS.map(tag => (
                       <label key={tag} style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-                        <input 
-                          type="radio" 
-                          name="routeCategory"
-                          value={tag}
-                          checked={selectedTag === tag}
-                          onChange={() => setSelectedTag(tag)}
-                        />
+                        <input type="radio" name="routeCategory" value={tag} checked={selectedTag === tag} onChange={() => setSelectedTag(tag)} />
                         {tag}
                       </label>
                     ))}
                   </div>
-
 
                   <button onClick={handleSaveToDatabase} disabled={isSaving || !uploadData} style={{ marginTop: '5px', padding: '8px', fontSize: '13px', fontWeight: 'bold', backgroundColor: (isSaving || !uploadData) ? '#ccc' : '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: (isSaving || !uploadData) ? 'not-allowed' : 'pointer' }}>
                     {isSaving ? '保存中...' : 'データベースに保存'}
