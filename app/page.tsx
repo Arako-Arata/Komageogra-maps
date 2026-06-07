@@ -583,77 +583,7 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
     }
   };
 
-  // 【追加】ルート情報の編集保存処理
-const handleUpdateRoute = async () => {
-    if (!selectedRoute || !editTitle.trim()) return;
-    setIsSaving(true);
-    try {
-      // 1. まず現在の DB データを取得する
-      const { data: currentData, error: fetchError } = await supabase
-        .from('routes')
-        .select('features_data, title, description')
-        .eq('id', selectedRoute.id)
-        .single();
-        
-      if (fetchError) throw fetchError;
-
-      // 2. 編集内容を適用した新しいオブジェクトを作成
-      let newTitle = editTitle;
-      let newDesc = editDesc;
-      let newFeaturesData = currentData.features_data;
-
-      // もし個別ポイントデータがあれば、名前を更新
-      if (newFeaturesData && Array.isArray(newFeaturesData)) {
-        newFeaturesData = newFeaturesData.map((f: any) => {
-          // 元の個別ポイントの名前（または元の親名）が selectedRoute.name と一致する場合
-          const currentName = f.properties?.name || f.properties?.T1_Name || currentData.title;
-          if (currentName === selectedRoute.name) {
-             return { ...f, properties: { ...f.properties, name: editTitle } };
-          }
-          return f;
-        });
-      }
-
-     // 3. 確実に DB を更新し、更新されたデータを受け取る（.select() を追加）
-      const newTags = editTag ? [editTag] : []; // 単一選択を配列に戻す
-
-      const { data: updatedRows, error: updateError } = await supabase
-        .from('routes')
-        .update({
-          title: newTitle,
-          description: newDesc,
-          features_data: newFeaturesData,
-          tags: newTags // タグの更新を追加
-        })
-        .eq('id', selectedRoute.id)
-        .select();
-        
-      if (updateError) throw updateError;
-      
-      // 更新された行が0件の場合（権限不足などで弾かれた場合）
-      if (!updatedRows || updatedRows.length === 0) {
-        throw new Error('更新権限がないか、データがありません。(RLSの設定を確認してください)');
-      }
-
-      alert('更新しました');
-      setIsEditingRoute(false);
-      
-      // 4. 最新の状態を再取得
-      await fetchSavedRoutes(); 
-      // 画面の表示を最新データに合わせて更新（タグも反映）
-      setSelectedRoute((prev: any) => ({ 
-        ...prev, 
-        name: editTitle, 
-        description: editDesc,
-        properties: { ...prev.properties, tags: newTags } 
-      }));
-      
-    } catch (err: any) {
-      alert('更新に失敗しました: ' + err.message);
-    } finally {
-      setIsSaving(false);
-    }
-  };
+ 
 
   const handleDeleteComment = async (commentId: string) => {
     if (!window.confirm('このコメントを削除しますか？')) return;
