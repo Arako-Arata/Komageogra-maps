@@ -143,24 +143,63 @@ const [session, setSession] = useState<any>(null);
     return () => subscription.unsubscribe();
   }, []);
 
-  const handleUpdateProfile = async () => {
-    if (!session?.user) return;
-    setIsUpdatingProfile(true);
+  const handleUpdateRoute = async () => {
+    if (!selectedRoute || !editTitle.trim()) return;
+    setIsSaving(true);
     try {
-      const finalDept = deptSelect === 'その他' ? deptInput : deptSelect;
+      // 1. まず現在の DB データを取得する
+      const { data: currentData, error: fetchError } = await supabase
+        .from('routes')
+        .select('features_data, title, description')
+        .eq('id', selectedRoute.id)
+        .single();
+        
+      if (fetchError) throw fetchError;
+
+      // 2. 編集内容を適用した新しいオブジェクトを作成
+      let newTitle = editTitle;
+      let newDesc = editDesc;
+      let newFeaturesData = currentData.features_data;
+
+      if (newFeaturesData && Array.isArray(newFeaturesData)) {
+        newFeaturesData = newFeaturesData.map((f: any) => {
+          const currentName = f.properties?.name || f.properties?.T1_Name || currentData.title;
+          if (currentName === selectedRoute.name) {
+             return { ...f, properties: { ...f.properties, name: editTitle } };
+          }
+          return f;
+        });
+      }
+
+      // 3. 確実に DB を更新し、更新されたデータを受け取る（.select() を追加）
+      const { data: updatedRows, error: updateError } = await supabase
+        .from('routes')
+        .update({
+          title: newTitle,
+          description: newDesc,
+          features_data: newFeaturesData
+        })
+        .eq('id', selectedRoute.id)
+        .select();
+        
+      if (updateError) throw updateError;
       
-      const { error } = await supabase.from('profiles').update({
-        department: finalDept,
-        updated_at: new Date().toISOString()
-      }).eq('id', session.user.id);
+      // 更新された行が0件の場合（権限不足などで弾かれた場合）
+      if (!updatedRows || updatedRows.length === 0) {
+        throw new Error('更新権限がないか、データがありません。(RLSの設定を確認してください)');
+      }
+
+      alert('更新しました');
+      setIsEditingRoute(false);
       
-      if (error) throw error;
-      alert('プロフィールを更新しました。');
-      setProfile({ ...profile, department: finalDept });
+      // 4. 最新の状態を再取得
+      await fetchSavedRoutes(); 
+      setSelectedRoute((prev: any) => ({ ...prev, name: editTitle, description: editDesc }));
+      
     } catch (err: any) {
-      alert('プロフィールの更新に失敗しました: ' + err.message);
+      alert('更新に失敗しました: ' + err.message);
     } finally {
-      setIsUpdatingProfile(false);
+      setIsSaving(false);
     }
   };
 
