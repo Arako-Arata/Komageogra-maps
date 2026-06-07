@@ -535,37 +535,56 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
   };
 
   // 【追加】ルート情報の編集保存処理
-  const handleUpdateRoute = async () => {
+const handleUpdateRoute = async () => {
     if (!selectedRoute || !editTitle.trim()) return;
     setIsSaving(true);
     try {
-      // 1. ルート本体のタイトルと説明を更新
-      const { error: routeError } = await supabase.from('routes').update({
-        title: editTitle,
-        description: editDesc
-      }).eq('id', selectedRoute.id);
-      if (routeError) throw routeError;
-
-      // 2. 個別データ（features_data）内も編集されていたら更新
-      const { data: routeData, error: fetchError } = await supabase.from('routes').select('features_data').eq('id', selectedRoute.id).single();
+      // 1. まず現在の DB データを取得する
+      const { data: currentData, error: fetchError } = await supabase
+        .from('routes')
+        .select('features_data, title, description')
+        .eq('id', selectedRoute.id)
+        .single();
+        
       if (fetchError) throw fetchError;
 
-      if (routeData.features_data && Array.isArray(routeData.features_data)) {
-        const updatedFeatures = routeData.features_data.map((f: any) => {
-          // クリックされたIDや名称で判定（ここは元の条件を維持）
-          const childName = f.properties?.name || f.properties?.T1_Name || selectedRoute.name;
-          if (childName === selectedRoute.name) {
+      // 2. 編集内容を適用した新しいオブジェクトを作成
+      let newTitle = editTitle;
+      let newDesc = editDesc;
+      let newFeaturesData = currentData.features_data;
+
+      // もし個別ポイントデータがあれば、名前を更新
+      if (newFeaturesData && Array.isArray(newFeaturesData)) {
+        newFeaturesData = newFeaturesData.map((f: any) => {
+          // 元の個別ポイントの名前（または元の親名）が selectedRoute.name と一致する場合
+          const currentName = f.properties?.name || f.properties?.T1_Name || currentData.title;
+          if (currentName === selectedRoute.name) {
              return { ...f, properties: { ...f.properties, name: editTitle } };
           }
           return f;
         });
-
-        await supabase.from('routes').update({ features_data: updatedFeatures }).eq('id', selectedRoute.id);
       }
 
+      // 3. 確実に DB を更新
+      const { error: updateError } = await supabase
+        .from('routes')
+        .update({
+          title: newTitle,
+          description: newDesc,
+          features_data: newFeaturesData
+        })
+        .eq('id', selectedRoute.id);
+        
+      if (updateError) throw updateError;
+
+      alert('更新しました');
       setIsEditingRoute(false);
-      setSelectedRoute({ ...selectedRoute, name: editTitle, description: editDesc });
-      fetchSavedRoutes();
+      
+      // 4. 最新の状態を再取得
+      await fetchSavedRoutes(); 
+      // 画面の表示を最新データに合わせて更新
+      setSelectedRoute((prev: any) => ({ ...prev, name: editTitle, description: editDesc }));
+      
     } catch (err: any) {
       alert('更新に失敗しました: ' + err.message);
     } finally {
