@@ -36,10 +36,12 @@ const [session, setSession] = useState<any>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [isVerifying, setIsVerifying] = useState(true); // 追加：認証チェック中のフラグ
   
-  const [isEditingRoute, setIsEditingRoute] = useState(false); // 追加: ルート編集モード切替
-  const [editTitle, setEditTitle] = useState(''); // 追加: 編集用タイトル
-  const [editDesc, setEditDesc] = useState(''); // 追加: 編集用説明
-  const [editTag, setEditTag] = useState<string>(''); // 追加: 編集用タグ
+const [isEditingRoute, setIsEditingRoute] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editTag, setEditTag] = useState<string>('');
+  
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // 追加: サイドバーの開閉状態
 
   const [profile, setProfile] = useState<any>(null);
   const [deptSelect, setDeptSelect] = useState('');
@@ -78,6 +80,13 @@ const [session, setSession] = useState<any>(null);
       console.error('プロフィールの取得・作成エラー:', err);
     }
   };
+
+  // 追加: 画面サイズに応じて初期のサイドバー開閉状態を決定する
+  useEffect(() => {
+    if (window.innerWidth >= 768) {
+      setIsSidebarOpen(true);
+    }
+  }, []);
 
     const ALLOWED_GUILD_ID = '1049983719445889034';
 
@@ -646,14 +655,33 @@ const handleDiscordLogin = async () => {
   };
 
   return (
-    <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
+    <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden' }}>
+      
+      {/* メニュー開閉ボタン（常に左上に浮いて表示） */}
+      <button 
+        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+        style={{
+          position: 'absolute', top: '10px', left: '10px', zIndex: 20,
+          width: '40px', height: '40px', display: 'flex', justifyContent: 'center', alignItems: 'center',
+          backgroundColor: 'white', border: 'none', borderRadius: '8px', 
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)', cursor: 'pointer', fontSize: '20px', color: '#334155'
+        }}
+      >
+        {isSidebarOpen ? '✕' : '☰'}
+      </button>
+
+      {/* サイドバー（スライド式） */}
       <div style={{
-        position: 'absolute', top: '10px', left: '10px', zIndex: 1, backgroundColor: 'white', padding: '15px',
-        borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.2)', color: 'black', width: '320px',
-        maxHeight: 'calc(100vh - 20px)', display: 'flex', flexDirection: 'column'
+        position: 'absolute', top: '0', left: '0', zIndex: 10,
+        backgroundColor: 'white', padding: '15px', paddingTop: '60px', // ボタンの分だけ上を空ける
+        boxShadow: '2px 0 8px rgba(0,0,0,0.2)', color: 'black',
+        width: '100%', maxWidth: '320px', height: '100%', 
+        display: 'flex', flexDirection: 'column',
+        transform: isSidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
+        transition: 'transform 0.3s ease-in-out'
       }}>
         
-      {!session ? (
+        {!session ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
             {isVerifying ? (
               <div style={{ padding: '20px', textAlign: 'center', color: '#3b82f6', fontSize: '14px', fontWeight: 'bold' }}>
