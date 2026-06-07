@@ -166,8 +166,8 @@ const [selectedRoute, setSelectedRoute] = useState<any>(null);
         },
         layers: [{ id: 'gsi_pale_layer', type: 'raster', source: 'gsi_pale', minzoom: 2, maxzoom: 18 }]
       },
-      center: [139.5445, 35.6533],
-      zoom: 13
+   center: [139.658630, 35.628857], // 駒澤大学付近（経度, 緯度）
+      zoom: 9 // 関東広域が見える縮尺
     });
 
     map.current.addControl(new maplibregl.NavigationControl(), 'top-right');
