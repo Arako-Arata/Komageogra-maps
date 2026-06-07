@@ -539,47 +539,29 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
     if (!selectedRoute || !editTitle.trim()) return;
     setIsSaving(true);
     try {
-      // 1. 現在のDBデータを取得
-      const { data, error: fetchError } = await supabase.from('routes').select('title, description, features_data').eq('id', selectedRoute.id).single();
+      // 1. ルート本体のタイトルと説明を更新
+      const { error: routeError } = await supabase.from('routes').update({
+        title: editTitle,
+        description: editDesc
+      }).eq('id', selectedRoute.id);
+      if (routeError) throw routeError;
+
+      // 2. 個別データ（features_data）内も編集されていたら更新
+      const { data: routeData, error: fetchError } = await supabase.from('routes').select('features_data').eq('id', selectedRoute.id).single();
       if (fetchError) throw fetchError;
 
-      let updatedFeaturesData = data.features_data;
-      let updatedTitle = data.title;
+      if (routeData.features_data && Array.isArray(routeData.features_data)) {
+        const updatedFeatures = routeData.features_data.map((f: any) => {
+          // クリックされたIDや名称で判定（ここは元の条件を維持）
+          const childName = f.properties?.name || f.properties?.T1_Name || selectedRoute.name;
+          if (childName === selectedRoute.name) {
+             return { ...f, properties: { ...f.properties, name: editTitle } };
+          }
+          return f;
+        });
 
-      // 2. 個別のポイントデータか、親（全体）データかを判定して名前を上書き
-      if (selectedRoute.properties.originalParentName && selectedRoute.properties.originalParentName !== selectedRoute.name) {
-          // 子（個別ポイント）の編集
-          if (updatedFeaturesData && Array.isArray(updatedFeaturesData)) {
-              updatedFeaturesData = updatedFeaturesData.map((f: any) => {
-                  const childName = f.properties?.name || f.properties?.T1_Name || data.title;
-                  if (childName === selectedRoute.name) {
-                      return { ...f, properties: { ...f.properties, name: editTitle } };
-                  }
-                  return f;
-              });
-          }
-      } else {
-          // 親（全体）の編集
-          updatedTitle = editTitle;
-          if (updatedFeaturesData && Array.isArray(updatedFeaturesData)) {
-              updatedFeaturesData = updatedFeaturesData.map((f: any) => {
-                  const childName = f.properties?.name || f.properties?.T1_Name || data.title;
-                  if (childName === selectedRoute.name) {
-                      return { ...f, properties: { ...f.properties, name: editTitle } };
-                  }
-                  return f;
-              });
-          }
+        await supabase.from('routes').update({ features_data: updatedFeatures }).eq('id', selectedRoute.id);
       }
-
-      // 3. DBを更新
-      const { error: updateError } = await supabase.from('routes').update({
-        title: updatedTitle,
-        description: editDesc,
-        features_data: updatedFeaturesData
-      }).eq('id', selectedRoute.id);
-
-      if (updateError) throw updateError;
 
       setIsEditingRoute(false);
       setSelectedRoute({ ...selectedRoute, name: editTitle, description: editDesc });
