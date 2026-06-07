@@ -440,9 +440,6 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
   };
 
   const handleDownloadGeoJSON = () => {
-
-
-  const handleDownloadGeoJSON = () => {
     if (!selectedRoute) return;
 
     const geojsonFeature = {
