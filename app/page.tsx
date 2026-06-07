@@ -18,7 +18,7 @@ export default function MapPage() {
   const [uploadData, setUploadData] = useState<any>(null);
 const [routeTitle, setRouteTitle] = useState('');
   const [routeDesc, setRouteDesc] = useState('');
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedTag, setSelectedTag] = useState<string>(''); // 単一選択に変更
   const [isSaving, setIsSaving] = useState(false);
 
   const AVAILABLE_TAGS = ['合宿記録', '巡検記録', 'ジオいもの', 'その他'];
@@ -359,11 +359,6 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
     return coords.map(force2D);
   };
 
-  const handleTagToggle = (tag: string) => {
-    setSelectedTags(prev => 
-      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
-    );
-  };
 
   const handleSaveToDatabase = async () => {
 
@@ -382,7 +377,7 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
         line_style: lineStyle,
         point_color: pointColor,
         user_id: session?.user?.id,
-        tags: selectedTags
+        tags: selectedTag ? [selectedTag] : [] // 選ばれていれば配列化して保存
       });
       if (error) throw error;
       
@@ -394,7 +389,7 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
       setUploadData(null);
       setRouteTitle('');
       setRouteDesc('');
-      setSelectedTags([]); // 保存後にタグの選択もリセット
+      setSelectedTag(''); // リセット処理を単一選択用に変更
       setSelectedFileName(null);
       fetchSavedRoutes();
     } catch (err: any) {
@@ -666,14 +661,16 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
                   <label style={{ fontSize: '13px', fontWeight: 'bold' }}>説明・メモ:</label>
                   <textarea value={routeDesc} onChange={(e) => setRouteDesc(e.target.value)} placeholder="ルートに関する詳細なメモ" style={{ padding: '4px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px', minHeight: '60px', resize: 'vertical' }} />
                   
-                  <label style={{ fontSize: '13px', fontWeight: 'bold', marginTop: '4px' }}>タグ (複数選択可):</label>
+               <label style={{ fontSize: '13px', fontWeight: 'bold', marginTop: '4px' }}>カテゴリ (1つだけ選択):</label>
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
                     {AVAILABLE_TAGS.map(tag => (
                       <label key={tag} style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
                         <input 
-                          type="checkbox" 
-                          checked={selectedTags.includes(tag)}
-                          onChange={() => handleTagToggle(tag)}
+                          type="radio" 
+                          name="routeCategory"
+                          value={tag}
+                          checked={selectedTag === tag}
+                          onChange={() => setSelectedTag(tag)}
                         />
                         {tag}
                       </label>
