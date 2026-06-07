@@ -811,7 +811,7 @@ const handleDiscordLogin = async () => {
         const padding = window.innerWidth >= 768 
           ? { top: 50, bottom: 50, left: 350, right: 50 } 
           : { top: 70, bottom: 50, left: 20, right: 20 }; 
-        map.current.fitBounds(bounds, { padding, maxZoom: 14, duration: 1000 });
+        map.current.fitBounds(bounds, { padding, maxZoom: 14, duration: 2500 });
       }
     }
 
