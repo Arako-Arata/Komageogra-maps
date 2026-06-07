@@ -24,8 +24,9 @@ const [routeTitle, setRouteTitle] = useState('');
   const AVAILABLE_TAGS = ['合宿記録', '巡検記録', 'ジオいもの', 'その他'];
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
 
-  const [selectedRoute, setSelectedRoute] = useState<any>(null);
+const [selectedRoute, setSelectedRoute] = useState<any>(null);
   const [comments, setComments] = useState<any[]>([]);
+  const [showUploadForm, setShowUploadForm] = useState(false); // アップロード画面の表示切替用
   const [newComment, setNewComment] = useState('');
 
   const [session, setSession] = useState<any>(null);
