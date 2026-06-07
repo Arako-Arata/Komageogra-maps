@@ -144,6 +144,8 @@ export default function MapPage() {
     }
   };
 
+  
+
   useEffect(() => {
     if (map.current || !mapContainer.current) return;
 
@@ -423,6 +425,23 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
     }
   };
 
+  const handleDeleteComment = async (commentId: string) => {
+    if (!window.confirm('このコメントを削除しますか？')) return;
+    setIsSaving(true);
+    try {
+      const { error } = await supabase.from('comments').delete().eq('id', commentId);
+      if (error) throw error;
+      if (selectedRoute) fetchComments(selectedRoute.id); // 画面を更新
+    } catch (err: any) {
+      alert('コメントの削除に失敗しました: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDownloadGeoJSON = () => {
+
+
   const handleDownloadGeoJSON = () => {
     if (!selectedRoute) return;
 
@@ -537,15 +556,27 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
                 <p style={{ fontSize: '12px', color: '#94a3b8' }}>まだコメントはありません。</p>
               ) : (
                 <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {comments.map((c) => (
+           {comments.map((c) => (
                     <li key={c.id} style={{ backgroundColor: '#f1f5f9', padding: '10px', borderRadius: '6px', fontSize: '13px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                        {c.profiles?.avatar_url && (
-                          <img src={c.profiles.avatar_url} alt="avatar" style={{ width: '20px', height: '20px', borderRadius: '50%' }} />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          {c.profiles?.avatar_url && (
+                            <img src={c.profiles.avatar_url} alt="avatar" style={{ width: '20px', height: '20px', borderRadius: '50%' }} />
+                          )}
+                          <span style={{ fontWeight: 'bold', fontSize: '12px', color: '#334155' }}>
+                            {c.profiles?.display_name || 'ゲスト'}
+                          </span>
+                        </div>
+                        {session?.user?.id === c.user_id && (
+                          <button 
+                            onClick={() => handleDeleteComment(c.id)}
+                            disabled={isSaving}
+                            style={{ background: 'none', border: 'none', cursor: isSaving ? 'not-allowed' : 'pointer', fontSize: '14px', padding: '0', color: '#ef4444' }}
+                            title="コメントを削除"
+                          >
+                            🗑️
+                          </button>
                         )}
-                        <span style={{ fontWeight: 'bold', fontSize: '12px', color: '#334155' }}>
-                          {c.profiles?.display_name || 'ゲスト'}
-                        </span>
                       </div>
                       <div style={{ whiteSpace: 'pre-wrap' }}>{c.content}</div>
                       <div style={{ fontSize: '11px', color: '#64748b', marginTop: '5px', textAlign: 'right' }}>{new Date(c.created_at).toLocaleString('ja-JP')}</div>
