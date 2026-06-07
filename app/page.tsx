@@ -781,6 +781,56 @@ const handleDiscordLogin = async () => {
     await supabase.auth.signOut();
   };
 
+  // 【追加】地物の境界ボックス（表示範囲）を計算する関数
+  const getBounds = (geometry: any) => {
+    let coords: any[] = [];
+    if (geometry.type === 'Point') coords = [geometry.coordinates];
+    else if (geometry.type === 'LineString' || geometry.type === 'MultiPoint') coords = geometry.coordinates;
+    else if (geometry.type === 'MultiLineString' || geometry.type === 'Polygon') coords = geometry.coordinates.flat(1);
+    else if (geometry.type === 'MultiPolygon') coords = geometry.coordinates.flat(2);
+
+    if (coords.length === 0) return null;
+
+    const bounds = new maplibregl.LngLatBounds(coords[0], coords[0]);
+    for (const coord of coords) {
+      bounds.extend(coord);
+    }
+    return bounds;
+  };
+
+  // 【追加】リストのデータ名をクリックしたときの処理（ズーム＆フラッシュ）
+  const handleRouteClick = (route: any) => {
+    if (!map.current) return;
+
+    // 1. ズーム処理（PCとスマホで余白を変える）
+    const bounds = getBounds(route.geometry);
+    if (bounds) {
+      if (route.geometry.type === 'Point') {
+        map.current.flyTo({ center: route.geometry.coordinates, zoom: 15 });
+      } else {
+        const padding = window.innerWidth >= 768 
+          ? { top: 50, bottom: 50, left: 350, right: 50 } 
+          : { top: 70, bottom: 50, left: 20, right: 20 }; 
+        map.current.fitBounds(bounds, { padding, maxZoom: 14, duration: 1000 });
+      }
+    }
+
+    // 2. フラッシュ（光らせる）処理
+    const targetFilter = ['all', ['==', 'id', route.properties.id], ['==', 'name', route.properties.name || '']] as any;
+    if (route.geometry.type === 'Point' || route.geometry.type === 'MultiPoint') {
+      map.current.setFilter('flash-points', targetFilter);
+      setTimeout(() => { if (map.current) map.current.setFilter('flash-points', ['==', 'name', ''] as any); }, 600);
+    } else {
+      map.current.setFilter('flash-lines', targetFilter);
+      setTimeout(() => { if (map.current) map.current.setFilter('flash-lines', ['==', 'name', ''] as any); }, 600);
+    }
+
+    // 3. スマホの場合はサイドバーを自動で閉じて地図を見やすくする
+    if (window.innerWidth < 768) {
+      setIsSidebarOpen(false);
+    }
+  };
+
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden' }}>
       
@@ -797,7 +847,7 @@ const handleDiscordLogin = async () => {
         {isSidebarOpen ? '✕' : '☰'}
       </button>
 
-      {/* ゲスト用 ログインボタン（マップ上に配置） */}
+      {/* ゲスト用 ログインボタン */}
       {!session && !isVerifying && (
         <button 
           onClick={handleDiscordLogin}
@@ -812,12 +862,12 @@ const handleDiscordLogin = async () => {
         </button>
       )}
 
-      {/* サイドバー（スライド式・半透明すりガラス） */}
+      {/* サイドバー */}
       <div style={{
         position: 'absolute', top: '0', left: '0', zIndex: 10,
-        backgroundColor: 'rgba(255, 255, 255, 0.55)', // 透明度を強めに
-        backdropFilter: 'blur(10px)', // すりガラス
-        WebkitBackdropFilter: 'blur(10px)', // Safari/iOS用すりガラス
+        backgroundColor: 'rgba(255, 255, 255, 0.55)',
+        backdropFilter: 'blur(10px)',
+        WebkitBackdropFilter: 'blur(10px)',
         padding: '15px', paddingTop: '60px',
         boxShadow: '2px 0 8px rgba(0,0,0,0.2)', color: 'black',
         width: '100%', maxWidth: '320px', height: '100%', 
@@ -919,11 +969,11 @@ const handleDiscordLogin = async () => {
           /* ================= 一覧・ゲスト・登録画面 ================= */
           <div style={{ overflowY: 'auto', paddingRight: '5px', height: '100%' }}>
             
-            {/* ヘッダー */}
+            {/* ヘッダー（画像ロゴに変更、ログアウトボタンの改行防止） */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', backgroundColor: 'rgba(255, 255, 255, 0.95)', padding: '10px 12px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 'bold' }}>駒澤大学地理学研究会 空間情報倉庫</h3>
+              <img src="/logo.png" alt="駒澤大学地理学研究会 空間情報データ倉庫" style={{ height: '30px', objectFit: 'contain', maxWidth: 'calc(100% - 60px)' }} />
               {session && (
-                <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', cursor: 'pointer', padding: 0, fontWeight: 'bold' }}>ログアウト</button>
+                <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', cursor: 'pointer', padding: 0, fontWeight: 'bold', whiteSpace: 'nowrap', flexShrink: 0 }}>ログアウト</button>
               )}
             </div>
 
@@ -948,11 +998,10 @@ const handleDiscordLogin = async () => {
               </>
             )}
 
-            {/* レイヤーツリー（中身は白背景で読みやすく） */}
+            {/* レイヤーツリー */}
             {!showUploadForm && (
               <div style={{ padding: '10px', backgroundColor: 'rgba(255, 255, 255, 0.85)', borderRadius: '8px', marginBottom: '15px', maxHeight: '500px', overflowY: 'auto' }}>
                 {AVAILABLE_TAGS.map(tag => {
-                  // ★ゲスト（非ログイン）の場合は、合宿記録と巡検記録のみ表示して他は隠す
                   if (!session && tag !== '合宿記録' && tag !== '巡検記録') return null;
 
                   const routesInTag = savedFeatures.filter(f => {
@@ -983,7 +1032,8 @@ const handleDiscordLogin = async () => {
                       </label>
                       <div style={{ marginLeft: '24px', display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
                         {routesInTag.filter((route, index, self) => index === self.findIndex((r) => r.properties.id === route.properties.id)).map(route => (
-                          <label key={route.properties.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', color: '#475569' }}>
+                          
+                          <div key={route.properties.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#475569' }}>
                             <input
                               type="checkbox"
                               checked={!hiddenRouteIds.includes(route.properties.id)}
@@ -994,10 +1044,21 @@ const handleDiscordLogin = async () => {
                                   setHiddenRouteIds(prev => [...prev, route.properties.id]);
                                 }
                               }}
+                              style={{ cursor: 'pointer' }}
                             />
-                            <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: route.properties.color, border: '1px solid #cbd5e1' }} />
-                            {route.properties.originalParentName || route.properties.name}
-                          </label>
+                            
+                            {/* データ名をクリックした時はズーム＆フラッシュ処理を呼ぶ */}
+                            <div 
+                              onClick={() => handleRouteClick(route)}
+                              style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', flex: 1, padding: '2px 0' }}
+                            >
+                              <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: route.properties.color, border: '1px solid #cbd5e1', flexShrink: 0 }} />
+                              <span style={{ transition: 'color 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.color = '#3b82f6'} onMouseLeave={(e) => e.currentTarget.style.color = '#475569'}>
+                                {route.properties.originalParentName || route.properties.name}
+                              </span>
+                            </div>
+                          </div>
+
                         ))}
                       </div>
                     </div>
