@@ -560,9 +560,10 @@ const handleDiscordLogin = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'discord',
       options: {
-        scopes: 'guilds', // 【修正】自動付与される項目は省き、guildsのみを追加
+        // scopesオプションはSupabaseに無視される可能性があるため使用しない
         queryParams: {
           prompt: 'consent',
+          scope: 'identify email guilds', // URLの直パラメータとして強制的に要求する
         },
       }
     });
