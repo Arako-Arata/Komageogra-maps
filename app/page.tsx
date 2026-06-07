@@ -73,9 +73,7 @@ const [selectedRoute, setSelectedRoute] = useState<any>(null);
     }
   };
 
-  useEffect(() => {
-    
-  const ALLOWED_GUILD_ID = '1049983719445889034';
+     const ALLOWED_GUILD_ID = '1049983719445889034';
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
