@@ -16,9 +16,12 @@ export default function MapPage() {
   const [pointColor, setPointColor] = useState('#eab308');
 
   const [uploadData, setUploadData] = useState<any>(null);
-  const [routeTitle, setRouteTitle] = useState('');
+const [routeTitle, setRouteTitle] = useState('');
   const [routeDesc, setRouteDesc] = useState('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+
+  const AVAILABLE_TAGS = ['合宿記録', '巡検記録', 'ジオいもの', 'その他'];
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
 
   const [selectedRoute, setSelectedRoute] = useState<any>(null);
@@ -346,7 +349,15 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
     return coords.map(force2D);
   };
 
+  const handleTagToggle = (tag: string) => {
+    setSelectedTags(prev => 
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+    );
+  };
+
   const handleSaveToDatabase = async () => {
+
+  
     if (!uploadData || !routeTitle.trim()) return;
     setIsSaving(true);
     try {
@@ -360,7 +371,8 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
         line_width: lineWidth,
         line_style: lineStyle,
         point_color: pointColor,
-        user_id: session?.user?.id 
+        user_id: session?.user?.id,
+        tags: selectedTags
       });
       if (error) throw error;
       
@@ -372,6 +384,7 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
       setUploadData(null);
       setRouteTitle('');
       setRouteDesc('');
+      setSelectedTags([]); // 保存後にタグの選択もリセット
       setSelectedFileName(null);
       fetchSavedRoutes();
     } catch (err: any) {
@@ -641,8 +654,23 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
             <div style={{ marginBottom: '15px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <label style={{ fontSize: '13px', fontWeight: 'bold' }}>タイトル:</label>
               <input type="text" value={routeTitle} onChange={(e) => setRouteTitle(e.target.value)} placeholder="例：〇〇巡検ルート" style={{ padding: '4px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px' }} />
-              <label style={{ fontSize: '13px', fontWeight: 'bold' }}>説明・メモ:</label>
+             <label style={{ fontSize: '13px', fontWeight: 'bold' }}>説明・メモ:</label>
               <textarea value={routeDesc} onChange={(e) => setRouteDesc(e.target.value)} placeholder="ルートに関する詳細なメモ" style={{ padding: '4px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px', minHeight: '60px', resize: 'vertical' }} />
+              
+              <label style={{ fontSize: '13px', fontWeight: 'bold', marginTop: '4px' }}>タグ (複数選択可):</label>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                {AVAILABLE_TAGS.map(tag => (
+                  <label key={tag} style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={selectedTags.includes(tag)}
+                      onChange={() => handleTagToggle(tag)}
+                    />
+                    {tag}
+                  </label>
+                ))}
+              </div>
+
               <button onClick={handleSaveToDatabase} disabled={isSaving || !uploadData} style={{ marginTop: '5px', padding: '8px', fontSize: '13px', fontWeight: 'bold', backgroundColor: (isSaving || !uploadData) ? '#ccc' : '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: (isSaving || !uploadData) ? 'not-allowed' : 'pointer' }}>
                 {isSaving ? '保存中...' : 'データベースに保存'}
               </button>
