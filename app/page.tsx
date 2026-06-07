@@ -628,39 +628,10 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
               <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', cursor: 'pointer', padding: 0 }}>ログアウト</button>
             </div>
             
-            {/* プロフィール編集エリア */}
-            <div style={{ marginBottom: '15px', padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-                {profile?.avatar_url && <img src={profile.avatar_url} alt="avatar" style={{ width: '32px', height: '32px', borderRadius: '50%' }} />}
-                <span style={{ fontWeight: 'bold', fontSize: '14px' }}>{profile?.display_name || '読込中...'}</span>
-              </div>
-              <div style={{ display: 'flex', gap: '5px', marginBottom: '8px', flexWrap: 'wrap' }}>
-                {/* 専攻の選択肢 */}
-                <select 
-                  value={deptSelect} 
-                  onChange={e => setDeptSelect(e.target.value)} 
-                  style={{ padding: '4px 8px', fontSize: '12px', border: '1px solid #ccc', borderRadius: '4px' }}
-                >
-                  <option value="">専攻を選択...</option>
-                  <option value="文化専攻">文化専攻</option>
-                  <option value="環境専攻">環境専攻</option>
-                  <option value="その他">その他</option>
-                </select>
-                
-                {/* 「その他」の場合のみ自由記述欄を表示 */}
-                {deptSelect === 'その他' && (
-                  <input 
-                    type="text" 
-                    placeholder="学部・学科名などを入力" 
-                    value={deptInput}
-                    onChange={e => setDeptInput(e.target.value)} 
-                    style={{ flex: 1, padding: '4px 8px', fontSize: '12px', border: '1px solid #ccc', borderRadius: '4px', minWidth: '100px' }} 
-                  />
-                )}
-              </div>
-              <button onClick={handleUpdateProfile} disabled={isUpdatingProfile} style={{ width: '100%', padding: '6px', fontSize: '12px', fontWeight: 'bold', backgroundColor: isUpdatingProfile ? '#94a3b8' : '#cbd5e1', color: '#334155', border: 'none', borderRadius: '4px', cursor: isUpdatingProfile ? 'not-allowed' : 'pointer' }}>
-                {isUpdatingProfile ? '更新中...' : 'プロフィール情報を更新'}
-              </button>
+           {/* プロフィール表示エリア */}
+            <div style={{ marginBottom: '15px', padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              {profile?.avatar_url && <img src={profile.avatar_url} alt="avatar" style={{ width: '32px', height: '32px', borderRadius: '50%' }} />}
+              <span style={{ fontWeight: 'bold', fontSize: '14px' }}>{profile?.display_name || '読込中...'}</span>
             </div>
 
             <div style={{ marginBottom: '15px' }}>
