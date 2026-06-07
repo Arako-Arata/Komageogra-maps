@@ -75,7 +75,7 @@ const [selectedRoute, setSelectedRoute] = useState<any>(null);
 
   useEffect(() => {
     
-   const ALLOWED_GUILD_ID = '1049983719445889034'; // 地理研のDiscordサーバーID
+  const ALLOWED_GUILD_ID = '1049983719445889034';
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -85,7 +85,6 @@ const [selectedRoute, setSelectedRoute] = useState<any>(null);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN') {
-        // Discordの認証直後、provider_tokenを持っている場合のみチェックを実行
         if (session?.provider_token) {
           try {
             const res = await fetch('https://discord.com/api/users/@me/guilds', {
@@ -115,12 +114,12 @@ const [selectedRoute, setSelectedRoute] = useState<any>(null);
             return;
           }
         }
-        // ※プロバイダトークンを持たない通常のページ更新時は、すでにDBでセッションが確立されているためそのまま通す
       }
 
       setSession(session);
       if (session?.user) checkAndUpsertProfile(session.user);
     });
+
     return () => subscription.unsubscribe();
   }, []);
 
@@ -560,11 +559,10 @@ const handleDiscordLogin = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'discord',
       options: {
-        // scopesオプションはSupabaseに無視される可能性があるため使用しない
         queryParams: {
           prompt: 'consent',
-          scope: 'identify email guilds', // URLの直パラメータとして強制的に要求する
-        },
+          scope: 'identify email guilds'
+        }
       }
     });
     if (error) {
