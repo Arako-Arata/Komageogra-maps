@@ -67,6 +67,7 @@ export default function MapPage() {
   };
 
   useEffect(() => {
+    
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session?.user) checkAndUpsertProfile(session.user);
@@ -192,7 +193,7 @@ export default function MapPage() {
       map.current?.addLayer({
         id: 'preview-lines', type: 'line', source: 'preview-data', 
         filter: ['any', ['==', '$type', 'LineString'], ['==', '$type', 'Polygon']],
-        layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 'line-dasharray': lineType === 'dashed' ? [4, 2] : [1, 0] }
+paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 'line-dasharray': lineStyle === 'dashed' ? [2, 2] : [1, 0] }
       });
 
       map.current?.addLayer({
