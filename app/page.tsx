@@ -219,7 +219,7 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
           const props = feature.properties;
           
           try {
-            const { data, error } = await supabase
+           const { data, error } = await supabase
               .from('routes')
               .select('geom')
               .eq('id', props.id)
@@ -227,12 +227,20 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
               
             if (error) throw error;
 
+            // MapLibreによって文字列化された配列を元のリストに戻す（エラー回避）
+            let parsedTags = [];
+            if (typeof props.tags === 'string') {
+              try { parsedTags = JSON.parse(props.tags); } catch (e) {}
+            } else if (Array.isArray(props.tags)) {
+              parsedTags = props.tags;
+            }
+
             setSelectedRoute({ 
               id: props.id, 
               name: props.name, 
               description: props.description,
               geometry: data.geom,
-              properties: props
+              properties: { ...props, tags: parsedTags }
             });
             fetchComments(props.id);
           } catch (err) {
