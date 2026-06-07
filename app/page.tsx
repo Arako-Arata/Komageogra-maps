@@ -43,6 +43,9 @@ const [isEditingRoute, setIsEditingRoute] = useState(false);
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // 追加: サイドバーの開閉状態
 
+  const sessionRef = useRef<any>(null);
+  useEffect(() => { sessionRef.current = session; }, [session]);
+
   const [profile, setProfile] = useState<any>(null);
   const [deptSelect, setDeptSelect] = useState('');
   const [deptInput, setDeptInput] = useState('');
@@ -466,40 +469,50 @@ const features: any[] = [];
             popupDiv.appendChild(tagsDiv);
           }
 
-          const btn = document.createElement('button');
-          btn.innerText = '詳細・コメント・編集';
-          btn.style.width = '100%';
-          btn.style.padding = '8px';
-          btn.style.marginTop = '4px';
-          btn.style.backgroundColor = '#3b82f6';
-          btn.style.color = 'white';
-          btn.style.border = 'none';
-          btn.style.borderRadius = '4px';
-          btn.style.cursor = 'pointer';
-          btn.style.fontSize = '12px';
-          btn.style.fontWeight = 'bold';
+         if (sessionRef.current) {
+            const btn = document.createElement('button');
+            btn.innerText = '詳細・コメント・編集';
+            btn.style.width = '100%';
+            btn.style.padding = '8px';
+            btn.style.marginTop = '4px';
+            btn.style.backgroundColor = '#3b82f6';
+            btn.style.color = 'white';
+            btn.style.border = 'none';
+            btn.style.borderRadius = '4px';
+            btn.style.cursor = 'pointer';
+            btn.style.fontSize = '12px';
+            btn.style.fontWeight = 'bold';
 
-          btn.onclick = async () => {
-            try {
-              const { data, error } = await supabase.from('routes').select('geom').eq('id', props.id).single();
-              if (error) throw error;
+            btn.onclick = async () => {
+              try {
+                const { data, error } = await supabase.from('routes').select('geom').eq('id', props.id).single();
+                if (error) throw error;
 
-              setSelectedRoute({
-                id: props.id,
-                name: props.name,
-                description: props.description,
-                geometry: data.geom,
-                properties: { ...props, tags: parsedTags }
-              });
-              fetchComments(props.id);
-              setIsSidebarOpen(true);
-            } catch (err) {
-              console.error('詳細データの取得エラー:', err);
-              alert('ルートデータの取得に失敗しました。');
-            }
-          };
-
-          popupDiv.appendChild(btn);
+                setSelectedRoute({
+                  id: props.id,
+                  name: props.name,
+                  description: props.description,
+                  geometry: data.geom,
+                  properties: { ...props, tags: parsedTags }
+                });
+                fetchComments(props.id);
+                setIsSidebarOpen(true);
+              } catch (err) {
+                console.error('詳細データの取得エラー:', err);
+                alert('ルートデータの取得に失敗しました。');
+              }
+            };
+            popupDiv.appendChild(btn);
+          } else {
+            // ゲスト用のメッセージ
+            const guestMsg = document.createElement('div');
+            guestMsg.innerText = '※詳細を見るにはログインが必要です';
+            guestMsg.style.fontSize = '10px';
+            guestMsg.style.color = '#94a3b8';
+            guestMsg.style.marginTop = '8px';
+            guestMsg.style.textAlign = 'center';
+            popupDiv.appendChild(guestMsg);
+          }
 
           const existingPopups = document.getElementsByClassName('maplibregl-popup');
           for (let i = 0; i < existingPopups.length; i++) {
