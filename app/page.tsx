@@ -97,13 +97,22 @@ const [selectedRoute, setSelectedRoute] = useState<any>(null);
             
             if (!isMember) {
               alert('エラー: 地理学研究会のDiscordサーバーに参加しているメンバーのみ利用可能です。');
-              await supabase.auth.signOut(); // 強制ログアウト
+              await supabase.auth.signOut();
               setSession(null);
-              return; // ここで処理をストップ
+              return;
             }
+          } else {
+            // 権限不足などでAPIエラーになった場合もログインをブロック
+            alert('サーバー情報が取得できませんでした。権限を許可してください。');
+            await supabase.auth.signOut();
+            setSession(null);
+            return;
           }
         } catch (err) {
           console.error('サーバー参加確認に失敗しました:', err);
+          await supabase.auth.signOut();
+          setSession(null);
+          return;
         }
       }
 
@@ -545,13 +554,15 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
-
-  const handleDiscordLogin = async () => {
+const handleDiscordLogin = async () => {
     setIsAuthLoading(true);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'discord',
       options: {
-        scopes: 'identify email guilds', // 参加サーバー情報を取得する権限を追加
+        scopes: 'identify email guilds',
+        queryParams: {
+          prompt: 'consent', // 確実に追加権限の同意画面を出す
+        },
       }
     });
     if (error) {
@@ -559,7 +570,6 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
       setIsAuthLoading(false);
     }
   };
-
   const handleLogout = async () => {
     await supabase.auth.signOut();
   };
