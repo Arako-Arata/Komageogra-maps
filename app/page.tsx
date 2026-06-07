@@ -112,12 +112,11 @@ const [selectedRoute, setSelectedRoute] = useState<any>(null);
       const { data, error } = await supabase.from('routes').select('*');
       if (error) throw error;
 
-   const features = data.map((row: any) => ({
-        type: 'Feature',
-        geometry: row.geom,
-        properties: {
+const features: any[] = [];
+      data.forEach((row: any) => {
+        const baseProperties = {
           id: row.id,
-          name: row.title,
+          name: row.title, // ファイル名（全体タイトル）
           description: row.description,
           color: row.line_color || '#3b82f6',
           width: row.line_width || 4,
@@ -125,10 +124,33 @@ const [selectedRoute, setSelectedRoute] = useState<any>(null);
           pointColor: row.point_color || '#eab308',
           userId: row.user_id,
           tags: row.tags || []
-        }
-      }));
+        };
 
-    setSavedFeatures(features); // 取得したデータをStateに保持する
+        if (row.features_data && Array.isArray(row.features_data) && row.features_data.length > 0) {
+          // 個別のポイントデータがあれば展開して追加
+          row.features_data.forEach((f: any) => {
+            const individualName = f.properties?.name || f.properties?.T1_Name || baseProperties.name;
+            features.push({
+              type: 'Feature',
+              geometry: f.geometry,
+              properties: {
+                ...baseProperties,
+                name: individualName, // 地図クリック時はこの個別名が出る
+                originalParentName: baseProperties.name // ツリー一覧表示用
+              }
+            });
+          });
+        } else {
+          // 古いデータなどはそのまま追加
+          features.push({
+            type: 'Feature',
+            geometry: row.geom,
+            properties: { ...baseProperties, originalParentName: baseProperties.name }
+          });
+        }
+      });
+
+      setSavedFeatures(features);
     } catch (err) {
       console.error('データの取得エラー:', err);
     }
@@ -333,7 +355,8 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
             const combinedFeature = {
               type: 'Feature',
               geometry: finalGeom,
-              properties: geojson.features[0].properties
+              properties: geojson.features[0].properties,
+              originalFeatures: geojson.features // 追加: 元の個別データを保持
             };
 
             setUploadData(combinedFeature);
@@ -378,7 +401,7 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
     try {
       const cleanGeometry = { ...uploadData.geometry, coordinates: force2D(uploadData.geometry.coordinates) };
       
-      const { error } = await supabase.from('routes').insert({ 
+  const { error } = await supabase.from('routes').insert({ 
         title: routeTitle, 
         description: routeDesc, 
         geom: cleanGeometry,
@@ -387,7 +410,8 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
         line_style: lineStyle,
         point_color: pointColor,
         user_id: session?.user?.id,
-        tags: selectedTag ? [selectedTag] : [] // 選ばれていれば配列化して保存
+        tags: selectedTag ? [selectedTag] : [],
+        features_data: uploadData.originalFeatures // 追加: 個別のポイントデータをJSONとして保存
       });
       if (error) throw error;
       
@@ -687,9 +711,11 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
                         📁 {tag}
                       </label>
                       
-                      {/* ルート（子）のチェックボックス一覧 */}
+                     {/* ルート（子）のチェックボックス一覧 */}
                       <div style={{ marginLeft: '24px', display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
-                        {routesInTag.map(route => (
+                        {routesInTag
+                          .filter((route, index, self) => index === self.findIndex((r) => r.properties.id === route.properties.id)) // IDで重複排除して1つにまとめる
+                          .map(route => (
                           <label key={route.properties.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', color: '#475569' }}>
                             <input
                               type="checkbox"
@@ -704,7 +730,7 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
                             />
                             {/* ルートの色を示す小さな丸 */}
                             <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: route.properties.color, border: '1px solid #cbd5e1' }} />
-                            {route.properties.name}
+                            {route.properties.originalParentName || route.properties.name} {/* ツリー上は全体タイトルを表示 */}
                           </label>
                         ))}
                       </div>
