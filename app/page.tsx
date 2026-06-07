@@ -108,7 +108,7 @@ const [routeTitle, setRouteTitle] = useState('');
       const { data, error } = await supabase.from('routes').select('*');
       if (error) throw error;
 
-      const features = data.map((row: any) => ({
+   const features = data.map((row: any) => ({
         type: 'Feature',
         geometry: row.geom,
         properties: {
@@ -119,7 +119,8 @@ const [routeTitle, setRouteTitle] = useState('');
           width: row.line_width || 4,
           style: row.line_style || 'solid',
           pointColor: row.point_color || '#eab308',
-          userId: row.user_id 
+          userId: row.user_id,
+          tags: row.tags || []
         }
       }));
 
@@ -527,8 +528,18 @@ paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8, 
               </button>
               <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', cursor: 'pointer', padding: 0 }}>ログアウト</button>
             </div>
-            <h3 style={{ margin: '0 0 5px 0', fontSize: '16px', fontWeight: 'bold' }}>{selectedRoute.name}</h3>
-            <p style={{ fontSize: '13px', color: '#475569', marginBottom: '15px', whiteSpace: 'pre-wrap' }}>{selectedRoute.description}</p>
+          <h3 style={{ margin: '0 0 5px 0', fontSize: '16px', fontWeight: 'bold' }}>{selectedRoute.name}</h3>
+            <p style={{ fontSize: '13px', color: '#475569', marginBottom: '10px', whiteSpace: 'pre-wrap' }}>{selectedRoute.description}</p>
+            
+            {selectedRoute.properties.tags && selectedRoute.properties.tags.length > 0 && (
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '15px' }}>
+                {selectedRoute.properties.tags.map((tag: string) => (
+                  <span key={tag} style={{ backgroundColor: '#e2e8f0', color: '#334155', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}>
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            )}
             
             {/* 【変更】ダウンロードボタンと削除ボタンを横並びに配置 */}
             <div style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}>
