@@ -28,8 +28,6 @@ const [selectedRoute, setSelectedRoute] = useState<any>(null);
   const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState('');
   const [showUploadForm, setShowUploadForm] = useState(false); // アップロード画面の表示切替用
-
-  // 【追加】レイヤーツリー制御用のState
   const [savedFeatures, setSavedFeatures] = useState<any[]>([]); // 取得した全ルートデータ
   const [hiddenRouteIds, setHiddenRouteIds] = useState<string[]>([]); // 非表示に設定されたルートのID
 const [session, setSession] = useState<any>(null);
@@ -93,22 +91,38 @@ const [isEditingRoute, setIsEditingRoute] = useState(false);
 
     const ALLOWED_GUILD_ID = '1049983719445889034';
 
-  useEffect(() => {
-    // URLに認証の戻り値（ハッシュ）が含まれているかチェック
+useEffect(() => {
     const isRedirecting = typeof window !== 'undefined' && window.location.hash.includes('access_token');
-    if (!isRedirecting) setIsVerifying(false);
+    // リダイレクト中以外は、まず「確認中」の状態にして画面を隠す
+    if (!isRedirecting) setIsVerifying(true);
 
+    // 1. 初回読み込み時（リロード時）のセッション復元
     supabase.auth.getSession().then(({ data: { session } }) => {
-      // リダイレクト処理中でなければ、すぐにセッションを復元する
       if (!isRedirecting) {
-        setSession(session);
-        if (session?.user) checkAndUpsertProfile(session.user);
+        if (session) {
+          // ★ブラウザに「Discordチェック通過済みの証」があるか確認
+          const isVerifiedLocally = localStorage.getItem(`verified_${session.user.id}`);
+          if (isVerifiedLocally === 'true') {
+            setSession(session);
+            if (session.user) checkAndUpsertProfile(session.user);
+            setIsVerifying(false);
+          } else {
+            // 証拠がなければ、すり抜けとみなして強制ログアウト
+            supabase.auth.signOut();
+            setSession(null);
+            setIsVerifying(false);
+          }
+        } else {
+          setIsVerifying(false);
+        }
       }
     });
 
+    // 2. ログインボタンを押した直後の処理
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN') {
-        if (session?.provider_token) {
+      if (event === 'SIGNED_IN' && session) {
+        // プロバイダートークンがある（新規ログイン・再認証）時のみAPIを叩く
+        if (session.provider_token) {
           setIsVerifying(true);
           try {
             const res = await fetch('https://discord.com/api/users/@me/guilds', {
@@ -120,12 +134,16 @@ const [isEditingRoute, setIsEditingRoute] = useState(false);
               const isMember = guilds.some((g: any) => g.id === ALLOWED_GUILD_ID);
 
               if (!isMember) {
-                alert('エラー: 地理学研究会のDiscordサーバーに参加しているメンバーのみ利用可能です。');
+                alert('エラー: 駒澤大学地理学研究会のDiscordサーバーに参加しているメンバーのみ利用可能です。');
                 await supabase.auth.signOut();
                 setSession(null);
                 setIsVerifying(false);
                 return;
               }
+              
+              // ★ 厳しいチェックを通過したら、ブラウザに証拠を保存する
+              localStorage.setItem(`verified_${session.user.id}`, 'true');
+              
             } else {
               alert('サーバー情報が取得できませんでした。権限を許可してください。');
               await supabase.auth.signOut();
@@ -142,12 +160,14 @@ const [isEditingRoute, setIsEditingRoute] = useState(false);
           }
         }
         
-        // チェックを無事に通過した、または既存セッションの復元時のみ画面を表示
+        // チェック通過済み、または無事に認証された場合のみ画面を表示
         setSession(session);
-        if (session?.user) checkAndUpsertProfile(session.user);
+        if (session.user) checkAndUpsertProfile(session.user);
         setIsVerifying(false);
         
       } else if (event === 'SIGNED_OUT') {
+        // ログアウト時は証拠を破棄する
+        if (session?.user) localStorage.removeItem(`verified_${session.user.id}`);
         setSession(null);
         setIsVerifying(false);
       }
