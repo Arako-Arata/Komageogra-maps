@@ -6,6 +6,20 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { kml } from '@tmcw/togeojson';
 import { supabase } from '../lib/supabase';
 
+// 【追加】説明文にHTMLが含まれている場合（KML由来など）にパースする関数
+const parseDescription = (desc: any) => {
+  if (!desc) return '';
+  if (typeof desc === 'string') {
+    try {
+      const parsed = JSON.parse(desc);
+      if (parsed && parsed.value) return parsed.value;
+    } catch (e) {
+      return desc;
+    }
+  }
+  return desc;
+};
+
 export default function MapPage() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
@@ -44,7 +58,6 @@ export default function MapPage() {
   const [editImage, setEditImage] = useState<File | null>(null);
   const [isDeletingImage, setIsDeletingImage] = useState(false);
 
-  // 【追加】編集時の色・スタイル管理用State
   const [editLineColor, setEditLineColor] = useState('#3b82f6');
   const [editLineWidth, setEditLineWidth] = useState(4);
   const [editLineStyle, setEditLineStyle] = useState('solid');
@@ -166,25 +179,24 @@ export default function MapPage() {
         finalImageUrl = urlData.publicUrl;
       }
 
-      const isEditingParent = selectedRoute.name === selectedRoute.properties.originalParentName;
-      if (isEditingParent) {
-        newTitle = editTitle;
-        newDesc = editDesc;
-      }
-
+      // 【修正】_feature_id を使って正確に子データのみを更新する
       if (newFeaturesData && Array.isArray(newFeaturesData)) {
-        newFeaturesData = newFeaturesData.map((f: any) => {
-          const currentName = f.properties?.name || f.properties?.T1_Name || currentData.title;
-          if (currentName === selectedRoute.name) {
+        newFeaturesData = newFeaturesData.map((f: any, idx: number) => {
+          const fid = f.properties?._feature_id || `legacy_${idx}`;
+          if (fid === selectedRoute.properties._feature_id) {
              return { ...f, properties: { ...f.properties, name: editTitle, description: editDesc, image_url: finalImageUrl } };
           }
           return f;
         });
       }
 
+      // ファイル内に地物が1つしかない場合のみ、親のタイトルも連動して変更する
+      if (newFeaturesData && newFeaturesData.length === 1) {
+        newTitle = editTitle;
+      }
+
       const newTags = editTag ? [editTag] : [];
       
-      // 【修正】スタイル情報も一緒に更新する
       const { data: updatedRows, error: updateError } = await supabase.from('routes')
         .update({ 
           title: newTitle, 
@@ -240,12 +252,14 @@ export default function MapPage() {
         };
 
         if (row.features_data && Array.isArray(row.features_data) && row.features_data.length > 0) {
-          row.features_data.forEach((f: any) => {
+          row.features_data.forEach((f: any, idx: number) => {
             const individualName = f.properties?.name || f.properties?.T1_Name || baseProperties.name;
             const individualDesc = f.properties?.description || baseProperties.description;
+            const fid = f.properties?._feature_id || `legacy_${idx}`; // 古いデータ用にフォールバックIDを付与
+            
             features.push({
               type: 'Feature', geometry: f.geometry,
-              properties: { ...baseProperties, name: individualName, description: individualDesc, originalParentName: baseProperties.name, image_url: f.properties?.image_url }
+              properties: { ...baseProperties, name: individualName, description: individualDesc, originalParentName: baseProperties.name, image_url: f.properties?.image_url, _feature_id: fid }
             });
           });
         } else {
@@ -286,6 +300,7 @@ export default function MapPage() {
     style.innerHTML = `
       .maplibregl-popup-close-button { font-size: 24px !important; padding: 4px 12px !important; color: #64748b !important; width: 40px; height: 40px; outline: none; }
       .maplibregl-popup-close-button:hover { background-color: #f1f5f9 !important; color: #ef4444 !important; border-radius: 0 4px 0 0; }
+      .custom-popup-content a { color: #3b82f6; text-decoration: underline; }
     `;
     document.head.appendChild(style);
 
@@ -339,6 +354,7 @@ export default function MapPage() {
           if (typeof props.tags === 'string') { try { parsedTags = JSON.parse(props.tags); } catch (err) {} } else if (Array.isArray(props.tags)) { parsedTags = props.tags; }
 
           const popupDiv = document.createElement('div');
+          popupDiv.className = 'custom-popup-content';
           popupDiv.style.padding = '4px'; popupDiv.style.color = '#334155'; popupDiv.style.fontFamily = 'sans-serif';
           const title = document.createElement('h4');
           title.style.margin = '0 0 4px 0'; title.style.fontSize = '14px'; title.style.fontWeight = 'bold'; title.innerText = props.name || '名称未設定';
@@ -356,9 +372,12 @@ export default function MapPage() {
             popupDiv.appendChild(img);
           }
 
+          // 【修正】ポップアップの説明文でHTML表示をサポート
           if (props.description) {
             const desc = document.createElement('div');
-            desc.style.fontSize = '12px'; desc.style.color = '#475569'; desc.style.marginBottom = '8px'; desc.style.whiteSpace = 'pre-wrap'; desc.innerText = props.description;
+            desc.style.fontSize = '12px'; desc.style.color = '#475569'; desc.style.marginBottom = '8px'; desc.style.lineHeight = '1.4';
+            desc.style.wordBreak = 'break-word';
+            desc.innerHTML = parseDescription(props.description);
             popupDiv.appendChild(desc);
           }
 
@@ -391,7 +410,7 @@ export default function MapPage() {
 
           const existingPopups = document.getElementsByClassName('maplibregl-popup');
           for (let i = 0; i < existingPopups.length; i++) { existingPopups[i].remove(); }
-          new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '240px' }).setLngLat(coordinates).setDOMContent(popupDiv).addTo(map.current!);
+          new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '260px' }).setLngLat(coordinates).setDOMContent(popupDiv).addTo(map.current!);
         });
         map.current?.on('mouseenter', layerId, () => { if (map.current) map.current.getCanvas().style.cursor = 'pointer'; });
         map.current?.on('mouseleave', layerId, () => { if (map.current) map.current.getCanvas().style.cursor = ''; });
@@ -434,7 +453,6 @@ export default function MapPage() {
               else if (f.geometry.type === 'MultiPoint') pointCoords.push(...f.geometry.coordinates);
             });
             
-            // 【修正】TypeScriptエラー解消のため、初期値と確実なフォールバックを設定
             let finalGeom: any = geojson.features[0]?.geometry || null;
             if (lineCoords.length > 0) {
               finalGeom = lineCoords.length === 1 ? { type: 'LineString', coordinates: lineCoords[0] } : { type: 'MultiLineString', coordinates: lineCoords };
@@ -442,7 +460,7 @@ export default function MapPage() {
               finalGeom = pointCoords.length === 1 ? { type: 'Point', coordinates: pointCoords[0] } : { type: 'MultiPoint', coordinates: pointCoords };
             }
             
-            if (!finalGeom) return; // 安全のためのガード
+            if (!finalGeom) return;
 
             const combinedFeature = { type: 'Feature', geometry: finalGeom, properties: geojson.features[0].properties, originalFeatures: geojson.features };
             setUploadData(combinedFeature);
@@ -478,7 +496,13 @@ export default function MapPage() {
         const { data: urlData } = supabase.storage.from('images').getPublicUrl(fileName);
         imageUrl = urlData.publicUrl;
       }
-      const featuresDataWithImage = uploadData.originalFeatures.map((f: any) => ({ ...f, properties: { ...f.properties, image_url: imageUrl || f.properties.image_url } }));
+      
+      // 【修正】保存時に各要素へ専用の _feature_id を発行
+      const featuresDataWithImage = uploadData.originalFeatures.map((f: any, idx: number) => ({ 
+        ...f, 
+        properties: { ...f.properties, image_url: imageUrl || f.properties.image_url, _feature_id: `${Date.now()}_${idx}` } 
+      }));
+      
       const cleanGeometry = { ...uploadData.geometry, coordinates: force2D(uploadData.geometry.coordinates) };
       const { error } = await supabase.from('routes').insert({ 
         title: routeTitle, description: routeDesc, geom: cleanGeometry, line_color: lineColor, line_width: lineWidth, line_style: lineStyle, point_color: pointColor,
@@ -605,7 +629,6 @@ export default function MapPage() {
                   <input type="file" accept="image/*" onChange={(e) => { setEditImage(e.target.files?.[0] || null); setIsDeletingImage(false); }} style={{ fontSize: '12px' }} />
                 </div>
 
-                {/* 【追加】編集時のスタイル設定UI */}
                 <div style={{ marginTop: '4px', padding: '10px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
                   <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>🎨 スタイル設定:</label>
                   <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>線の色:</span><input type="color" value={editLineColor} onChange={e => setEditLineColor(e.target.value)} /></label>
@@ -634,7 +657,12 @@ export default function MapPage() {
                 {selectedRoute.properties.image_url && (
                   <img src={selectedRoute.properties.image_url} alt="登録画像" style={{ width: '100%', borderRadius: '6px', marginBottom: '10px' }} />
                 )}
-                <p style={{ fontSize: '13px', color: '#475569', marginBottom: '10px', whiteSpace: 'pre-wrap' }}>{selectedRoute.description}</p>
+                {/* 【修正】サイドバーの詳細画面でもHTMLタグを反映して表示 */}
+                <div 
+                  style={{ fontSize: '13px', color: '#475569', marginBottom: '10px', lineHeight: '1.5', wordBreak: 'break-word' }} 
+                  dangerouslySetInnerHTML={{ __html: parseDescription(selectedRoute.description) }} 
+                />
+                
                 {selectedRoute.properties.tags && selectedRoute.properties.tags.length > 0 && (
                   <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '15px' }}>
                     {selectedRoute.properties.tags.map((tag: string) => <span key={tag} style={{ backgroundColor: '#e2e8f0', color: '#334155', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}>#{tag}</span>)}
@@ -644,10 +672,9 @@ export default function MapPage() {
                   <button onClick={handleDownloadGeoJSON} style={{ flex: 1, padding: '8px', fontSize: '13px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px' }}>📥 GeoJSON DL</button>
                   {session?.user?.id === selectedRoute.properties.userId && (
                     <>
-                      {/* 【修正】編集ボタン押下時にスタイルの現在値を読み込む */}
                       <button onClick={() => { 
                         setEditTitle(selectedRoute.name); 
-                        setEditDesc(selectedRoute.description || ''); 
+                        setEditDesc(parseDescription(selectedRoute.description || '')); 
                         setEditTag(selectedRoute.properties.tags?.[0] || ''); 
                         setEditLineColor(selectedRoute.properties.color || '#3b82f6');
                         setEditLineWidth(selectedRoute.properties.width || 4);
