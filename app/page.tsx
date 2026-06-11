@@ -41,8 +41,14 @@ export default function MapPage() {
   const [editTitle, setEditTitle] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [editTag, setEditTag] = useState<string>('');
-  const [editImage, setEditImage] = useState<File | null>(null); // 【追加】編集時の新画像
-  const [isDeletingImage, setIsDeletingImage] = useState(false); // 【追加】画像削除フラグ
+  const [editImage, setEditImage] = useState<File | null>(null);
+  const [isDeletingImage, setIsDeletingImage] = useState(false);
+
+  // 【追加】編集時の色・スタイル管理用State
+  const [editLineColor, setEditLineColor] = useState('#3b82f6');
+  const [editLineWidth, setEditLineWidth] = useState(4);
+  const [editLineStyle, setEditLineStyle] = useState('solid');
+  const [editPointColor, setEditPointColor] = useState('#eab308');
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -137,7 +143,6 @@ export default function MapPage() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // 【修正】編集時に画像も更新・削除できるように変更
   const handleUpdateRoute = async () => {
     if (!selectedRoute || !editTitle.trim()) return;
     setIsSaving(true);
@@ -150,7 +155,6 @@ export default function MapPage() {
       let newFeaturesData = currentData.features_data;
       let finalImageUrl = selectedRoute.properties.image_url;
 
-      // 1. 画像の削除・差し替え処理
       if (isDeletingImage) {
         finalImageUrl = null;
       } else if (editImage) {
@@ -162,35 +166,36 @@ export default function MapPage() {
         finalImageUrl = urlData.publicUrl;
       }
 
-      // 2. 親データの更新判定
       const isEditingParent = selectedRoute.name === selectedRoute.properties.originalParentName;
       if (isEditingParent) {
         newTitle = editTitle;
         newDesc = editDesc;
       }
 
-      // 3. 子データ（個別地物）の更新
       if (newFeaturesData && Array.isArray(newFeaturesData)) {
         newFeaturesData = newFeaturesData.map((f: any) => {
           const currentName = f.properties?.name || f.properties?.T1_Name || currentData.title;
           if (currentName === selectedRoute.name) {
-             return { 
-               ...f, 
-               properties: { 
-                 ...f.properties, 
-                 name: editTitle, 
-                 description: editDesc,
-                 image_url: finalImageUrl // 画像URLを更新
-               } 
-             };
+             return { ...f, properties: { ...f.properties, name: editTitle, description: editDesc, image_url: finalImageUrl } };
           }
           return f;
         });
       }
 
       const newTags = editTag ? [editTag] : [];
+      
+      // 【修正】スタイル情報も一緒に更新する
       const { data: updatedRows, error: updateError } = await supabase.from('routes')
-        .update({ title: newTitle, description: newDesc, features_data: newFeaturesData, tags: newTags })
+        .update({ 
+          title: newTitle, 
+          description: newDesc, 
+          features_data: newFeaturesData, 
+          tags: newTags,
+          line_color: editLineColor,
+          line_width: editLineWidth,
+          line_style: editLineStyle,
+          point_color: editPointColor
+        })
         .eq('id', selectedRoute.id).select();
         
       if (updateError) throw updateError;
@@ -205,7 +210,15 @@ export default function MapPage() {
         ...prev, 
         name: editTitle, 
         description: editDesc, 
-        properties: { ...prev.properties, tags: newTags, image_url: finalImageUrl } 
+        properties: { 
+          ...prev.properties, 
+          tags: newTags, 
+          image_url: finalImageUrl,
+          color: editLineColor,
+          width: editLineWidth,
+          style: editLineStyle,
+          pointColor: editPointColor
+        } 
       }));
     } catch (err: any) {
       alert('更新に失敗しました: ' + err.message);
@@ -386,6 +399,13 @@ export default function MapPage() {
     });
   }, []);
 
+  useEffect(() => {
+    if (!map.current || !map.current.isStyleLoaded()) return;
+    try {
+      map.current.setPaintProperty('preview-lines', 'line-color', lineColor); map.current.setPaintProperty('preview-lines', 'line-width', lineWidth); map.current.setPaintProperty('preview-lines', 'line-dasharray', lineStyle === 'dashed' ? [2, 2] : [1, 0]); map.current.setPaintProperty('preview-points', 'circle-color', pointColor);
+    } catch (e) {}
+  }, [lineColor, lineWidth, lineStyle, pointColor]);
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) { setSelectedFileName(null); return; }
@@ -413,14 +433,23 @@ export default function MapPage() {
               else if (f.geometry.type === 'Point') pointCoords.push(f.geometry.coordinates);
               else if (f.geometry.type === 'MultiPoint') pointCoords.push(...f.geometry.coordinates);
             });
-            let finalGeom;
-            if (lineCoords.length > 0) finalGeom = lineCoords.length === 1 ? { type: 'LineString', coordinates: lineCoords[0] } : { type: 'MultiLineString', coordinates: lineCoords };
-            else if (pointCoords.length > 0) finalGeom = pointCoords.length === 1 ? { type: 'Point', coordinates: pointCoords[0] } : { type: 'MultiPoint', coordinates: pointCoords };
+            
+            // 【修正】TypeScriptエラー解消のため、初期値と確実なフォールバックを設定
+            let finalGeom: any = geojson.features[0]?.geometry || null;
+            if (lineCoords.length > 0) {
+              finalGeom = lineCoords.length === 1 ? { type: 'LineString', coordinates: lineCoords[0] } : { type: 'MultiLineString', coordinates: lineCoords };
+            } else if (pointCoords.length > 0) {
+              finalGeom = pointCoords.length === 1 ? { type: 'Point', coordinates: pointCoords[0] } : { type: 'MultiPoint', coordinates: pointCoords };
+            }
+            
+            if (!finalGeom) return; // 安全のためのガード
+
             const combinedFeature = { type: 'Feature', geometry: finalGeom, properties: geojson.features[0].properties, originalFeatures: geojson.features };
             setUploadData(combinedFeature);
             if (pointCoords.length > 1 && file.name) setRouteTitle(file.name.replace(/\.[^/.]+$/, ""));
             else setRouteTitle(featureName || '');
             setRouteDesc(featureDesc || '');
+
             let targetLng, targetLat;
             if (finalGeom.type === 'Point') [targetLng, targetLat] = finalGeom.coordinates;
             else if (finalGeom.type === 'MultiPoint') [targetLng, targetLat] = finalGeom.coordinates[0];
@@ -564,7 +593,6 @@ export default function MapPage() {
                 <label style={{ fontSize: '13px', fontWeight: 'bold' }}>説明:</label>
                 <textarea value={editDesc} onChange={(e) => setEditDesc(e.target.value)} placeholder="説明・メモ" style={{ padding: '6px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px', minHeight: '80px' }} />
                 
-                {/* 【追加】編集時の画像管理UI */}
                 <div style={{ marginTop: '8px', padding: '10px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
                   <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>📷 画像の管理:</label>
                   {selectedRoute.properties.image_url && !isDeletingImage && (
@@ -575,7 +603,15 @@ export default function MapPage() {
                   )}
                   {isDeletingImage && <div style={{ fontSize: '11px', color: '#ef4444', marginBottom: '8px' }}>※保存時に画像が削除されます</div>}
                   <input type="file" accept="image/*" onChange={(e) => { setEditImage(e.target.files?.[0] || null); setIsDeletingImage(false); }} style={{ fontSize: '12px' }} />
-                  <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>差し替える場合は新しいファイルを選択してください</div>
+                </div>
+
+                {/* 【追加】編集時のスタイル設定UI */}
+                <div style={{ marginTop: '4px', padding: '10px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
+                  <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>🎨 スタイル設定:</label>
+                  <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>線の色:</span><input type="color" value={editLineColor} onChange={e => setEditLineColor(e.target.value)} /></label>
+                  <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>太さ ({editLineWidth}px):</span><input type="range" min="1" max="10" value={editLineWidth} onChange={e => setEditLineWidth(Number(e.target.value))} /></label>
+                  <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>種類:</span><select value={editLineStyle} onChange={e => setEditLineStyle(e.target.value)}><option value="solid">実線</option><option value="dashed">破線</option></select></label>
+                  <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>ピンの色:</span><input type="color" value={editPointColor} onChange={e => setEditPointColor(e.target.value)} /></label>
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
@@ -608,7 +644,17 @@ export default function MapPage() {
                   <button onClick={handleDownloadGeoJSON} style={{ flex: 1, padding: '8px', fontSize: '13px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px' }}>📥 GeoJSON DL</button>
                   {session?.user?.id === selectedRoute.properties.userId && (
                     <>
-                      <button onClick={() => { setEditTitle(selectedRoute.name); setEditDesc(selectedRoute.description || ''); setEditTag(selectedRoute.properties.tags?.[0] || ''); setIsEditingRoute(true); }} style={{ padding: '8px 12px', fontSize: '13px', backgroundColor: '#f59e0b', color: 'white', border: 'none', borderRadius: '4px' }}>✏️ 編集</button>
+                      {/* 【修正】編集ボタン押下時にスタイルの現在値を読み込む */}
+                      <button onClick={() => { 
+                        setEditTitle(selectedRoute.name); 
+                        setEditDesc(selectedRoute.description || ''); 
+                        setEditTag(selectedRoute.properties.tags?.[0] || ''); 
+                        setEditLineColor(selectedRoute.properties.color || '#3b82f6');
+                        setEditLineWidth(selectedRoute.properties.width || 4);
+                        setEditLineStyle(selectedRoute.properties.style || 'solid');
+                        setEditPointColor(selectedRoute.properties.pointColor || '#eab308');
+                        setIsEditingRoute(true); 
+                      }} style={{ padding: '8px 12px', fontSize: '13px', backgroundColor: '#f59e0b', color: 'white', border: 'none', borderRadius: '4px' }}>✏️ 編集</button>
                       <button onClick={handleDeleteRoute} disabled={isSaving} style={{ padding: '8px 12px', fontSize: '13px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '4px' }}>🗑️</button>
                     </>
                   )}
