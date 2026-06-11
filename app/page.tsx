@@ -31,7 +31,7 @@ export default function MapPage() {
   const [uploadData, setUploadData] = useState<any>(null);
   const [routeTitle, setRouteTitle] = useState('');
   const [routeDesc, setRouteDesc] = useState('');
-  const [selectedTag, setSelectedTag] = useState<string>('');
+  const [selectedTag, setSelectedTag] = useState<string>(''); 
   const [uploadImage, setUploadImage] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -41,14 +41,13 @@ export default function MapPage() {
   const [selectedRoute, setSelectedRoute] = useState<any>(null);
   const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState('');
-  const [showUploadForm, setShowUploadForm] = useState(false);
+  const [showUploadForm, setShowUploadForm] = useState(false); 
 
-  const [savedFeatures, setSavedFeatures] = useState<any[]>([]);
-  const [hiddenRouteIds, setHiddenRouteIds] = useState<string[]>([]);
-  
+  const [savedFeatures, setSavedFeatures] = useState<any[]>([]); 
+  const [hiddenRouteIds, setHiddenRouteIds] = useState<string[]>([]); 
   const [session, setSession] = useState<any>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
-  const [isVerifying, setIsVerifying] = useState(true);
+  const [isVerifying, setIsVerifying] = useState(true); 
   
   const [isEditingRoute, setIsEditingRoute] = useState(false);
   const [editTitle, setEditTitle] = useState('');
@@ -62,7 +61,7 @@ export default function MapPage() {
   const [editLineStyle, setEditLineStyle] = useState('solid');
   const [editPointColor, setEditPointColor] = useState('#eab308');
   
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
 
   const sessionRef = useRef<any>(null);
   useEffect(() => { sessionRef.current = session; }, [session]);
@@ -72,62 +71,63 @@ export default function MapPage() {
   const checkAndUpsertProfile = async (user: any) => {
     try {
       const { data, error } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      
       if (error && error.code === 'PGRST116') {
-        const newProfile = { id: user.id, display_name: user.user_metadata?.full_name || user.user_metadata?.name || 'ゲスト', avatar_url: user.user_metadata?.avatar_url || '', department: '' };
+        const newProfile = {
+          id: user.id,
+          display_name: user.user_metadata?.full_name || user.user_metadata?.name || 'ゲスト',
+          avatar_url: user.user_metadata?.avatar_url || '',
+          department: ''
+        };
         await supabase.from('profiles').insert(newProfile);
         setProfile(newProfile);
       } else if (data) {
         setProfile(data);
       }
-    } catch (err) {}
+    } catch (err) {
+      console.error('プロフィールの取得・作成エラー:', err);
+    }
   };
 
   useEffect(() => {
-    if (window.innerWidth >= 768) setIsSidebarOpen(true);
+    if (window.innerWidth >= 768) {
+      setIsSidebarOpen(true);
+    }
   }, []);
 
   const ALLOWED_GUILD_ID = '1049983719445889034';
 
   useEffect(() => {
     const isRedirecting = typeof window !== 'undefined' && window.location.hash.includes('access_token');
-    if (!isRedirecting) setIsVerifying(true);
+    if (!isRedirecting) setIsVerifying(false);
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!isRedirecting) {
-        if (session) {
-          const isVerifiedLocally = localStorage.getItem(`verified_${session.user.id}`);
-          if (isVerifiedLocally === 'true') {
-            setSession(session);
-            if (session.user) checkAndUpsertProfile(session.user);
-            setIsVerifying(false);
-          } else {
-            supabase.auth.signOut();
-            setSession(null);
-            setIsVerifying(false);
-          }
-        } else {
-          setIsVerifying(false);
-        }
+        setSession(session);
+        if (session?.user) checkAndUpsertProfile(session.user);
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session) {
-        if (session.provider_token) {
+      if (event === 'SIGNED_IN') {
+        if (session?.provider_token) {
           setIsVerifying(true);
           try {
-            const res = await fetch('https://discord.com/api/users/@me/guilds', { headers: { Authorization: `Bearer ${session.provider_token}` } });
+            const res = await fetch('https://discord.com/api/users/@me/guilds', {
+              headers: { Authorization: `Bearer ${session.provider_token}` }
+            });
+
             if (res.ok) {
               const guilds = await res.json();
               const isMember = guilds.some((g: any) => g.id === ALLOWED_GUILD_ID);
+
               if (!isMember) {
-                alert('エラー: 駒澤大学地理学研究会のDiscordサーバーに参加しているメンバーのみ利用可能です。');
+                alert('エラー: 地理学研究会のDiscordサーバーに参加しているメンバーのみ利用可能です。');
                 await supabase.auth.signOut();
                 setSession(null);
                 setIsVerifying(false);
                 return;
               }
-              localStorage.setItem(`verified_${session.user.id}`, 'true');
             } else {
               alert('サーバー情報が取得できませんでした。権限を許可してください。');
               await supabase.auth.signOut();
@@ -136,17 +136,19 @@ export default function MapPage() {
               return;
             }
           } catch (err) {
+            console.error('サーバー参加確認に失敗しました:', err);
             await supabase.auth.signOut();
             setSession(null);
             setIsVerifying(false);
             return;
           }
         }
+        
         setSession(session);
-        if (session.user) checkAndUpsertProfile(session.user);
+        if (session?.user) checkAndUpsertProfile(session.user);
         setIsVerifying(false);
+        
       } else if (event === 'SIGNED_OUT') {
-        if (session?.user) localStorage.removeItem(`verified_${session.user.id}`);
         setSession(null);
         setIsVerifying(false);
       }
@@ -291,7 +293,6 @@ export default function MapPage() {
 
     map.current.addControl(new maplibregl.NavigationControl(), 'top-right');
     
-    // 【追加】位置情報追従（GeolocateControl）の追加
     map.current.addControl(
       new maplibregl.GeolocateControl({
         positionOptions: { enableHighAccuracy: true },
@@ -608,9 +609,8 @@ export default function MapPage() {
                   )}
                   {isDeletingImage && <div style={{ fontSize: '11px', color: '#ef4444', marginBottom: '8px' }}>※保存時に画像が削除されます</div>}
                   
-                  {/* 【UI修正】編集画面の画像選択ボタン化 */}
                   <label style={{ display: 'block', padding: '8px', textAlign: 'center', cursor: 'pointer', border: '1px solid #334155', borderRadius: '4px', backgroundColor: '#ffffff', fontSize: '12px', color: '#334155' }}>
-                    {editImage ? `🖼️ ${editImage.name}` : 'ファイルを選択'}
+                    {editImage ? `📷 ${editImage.name}` : 'ファイルを選択'}
                     <input type="file" accept="image/*" onChange={(e) => { setEditImage(e.target.files?.[0] || null); setIsDeletingImage(false); }} style={{ display: 'none' }} />
                   </label>
                 </div>
@@ -674,30 +674,35 @@ export default function MapPage() {
               </>
             )}
 
-            <hr style={{ margin: '0 0 15px 0', borderTop: '1px solid #ddd' }} />
-            <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', fontWeight: 'bold' }}>コメント</h4>
-            <div style={{ flexGrow: 1, overflowY: 'auto', marginBottom: '15px' }}>
-              {comments.length === 0 ? <p style={{ fontSize: '12px', color: '#94a3b8' }}>まだコメントはありません。</p> : (
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {comments.map((c) => (
-                    <li key={c.id} style={{ backgroundColor: '#f1f5f9', padding: '10px', borderRadius: '6px', fontSize: '13px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          {c.profiles?.avatar_url && <img src={c.profiles.avatar_url} alt="avatar" style={{ width: '20px', height: '20px', borderRadius: '50%' }} />}
-                          <span style={{ fontWeight: 'bold', fontSize: '12px' }}>{c.profiles?.display_name || 'ゲスト'}</span>
-                        </div>
-                        {session?.user?.id === c.user_id && <button onClick={() => handleDeleteComment(c.id)} disabled={isSaving} style={{ background: 'none', border: 'none', color: '#ef4444' }}>🗑️</button>}
-                      </div>
-                      <div style={{ whiteSpace: 'pre-wrap' }}>{c.content}</div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <textarea value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder="コメントを入力..." style={{ padding: '8px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px', minHeight: '60px' }} />
-              <button onClick={handleSaveComment} disabled={isSaving || !newComment.trim()} style={{ padding: '8px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px' }}>送信</button>
-            </div>
+            {/* 【修正】編集画面中はコメント領域を隠す */}
+            {!isEditingRoute && (
+              <>
+                <hr style={{ margin: '0 0 15px 0', borderTop: '1px solid #ddd' }} />
+                <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', fontWeight: 'bold' }}>コメント</h4>
+                <div style={{ flexGrow: 1, overflowY: 'auto', marginBottom: '15px' }}>
+                  {comments.length === 0 ? <p style={{ fontSize: '12px', color: '#94a3b8' }}>まだコメントはありません。</p> : (
+                    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {comments.map((c) => (
+                        <li key={c.id} style={{ backgroundColor: '#f1f5f9', padding: '10px', borderRadius: '6px', fontSize: '13px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              {c.profiles?.avatar_url && <img src={c.profiles.avatar_url} alt="avatar" style={{ width: '20px', height: '20px', borderRadius: '50%' }} />}
+                              <span style={{ fontWeight: 'bold', fontSize: '12px' }}>{c.profiles?.display_name || 'ゲスト'}</span>
+                            </div>
+                            {session?.user?.id === c.user_id && <button onClick={() => handleDeleteComment(c.id)} disabled={isSaving} style={{ background: 'none', border: 'none', color: '#ef4444' }}>🗑️</button>}
+                          </div>
+                          <div style={{ whiteSpace: 'pre-wrap' }}>{c.content}</div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <textarea value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder="コメントを入力..." style={{ padding: '8px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px', minHeight: '60px' }} />
+                  <button onClick={handleSaveComment} disabled={isSaving || !newComment.trim()} style={{ padding: '8px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px' }}>送信</button>
+                </div>
+              </>
+            )}
           </div>
         ) : (
           <div style={{ overflowY: 'auto', height: '100%' }}>
@@ -752,7 +757,6 @@ export default function MapPage() {
             {session && showUploadForm && (
               <div style={{ padding: '10px', backgroundColor: 'rgba(255, 255, 255, 0.95)', borderRadius: '8px' }}>
                 
-                {/* 【UI修正】空間データ添付ボタン */}
                 <div style={{ marginBottom: '10px' }}>
                   <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>🗺️ KML, GeoJSONを添付:</label>
                   <label style={{ display: 'block', padding: '8px', textAlign: 'center', cursor: 'pointer', border: '1px solid #334155', borderRadius: '4px', backgroundColor: '#f8fafc', fontSize: '13px', color: '#334155' }}>
@@ -764,13 +768,21 @@ export default function MapPage() {
                 <input type="text" value={routeTitle} onChange={(e) => setRouteTitle(e.target.value)} placeholder="タイトル" style={{ width: '100%', padding: '6px', marginBottom: '10px', border: '1px solid #ccc', borderRadius: '4px' }} />
                 <textarea value={routeDesc} onChange={(e) => setRouteDesc(e.target.value)} placeholder="メモ" style={{ width: '100%', padding: '6px', marginBottom: '10px', border: '1px solid #ccc', borderRadius: '4px' }} />
                 
-                {/* 【UI修正】画像添付ボタン */}
                 <div style={{ marginBottom: '10px' }}>
                   <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>📷 画像を添付 (任意):</label>
                   <label style={{ display: 'block', padding: '8px', textAlign: 'center', cursor: 'pointer', border: '1px solid #334155', borderRadius: '4px', backgroundColor: '#f8fafc', fontSize: '13px', color: '#334155' }}>
-                    {uploadImage ? `🖼️ ${uploadImage.name}` : 'ファイルを選択'}
+                    {uploadImage ? `📷 ${uploadImage.name}` : 'ファイルを選択'}
                     <input type="file" accept="image/*" onChange={(e) => setUploadImage(e.target.files?.[0] || null)} style={{ display: 'none' }} />
                   </label>
+                </div>
+
+                {/* 【追加】新規アップロード時のスタイル設定UI */}
+                <div style={{ marginBottom: '10px', padding: '10px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
+                  <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>🎨 スタイル設定:</label>
+                  <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>線の色:</span><input type="color" value={lineColor} onChange={e => setLineColor(e.target.value)} /></label>
+                  <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>太さ ({lineWidth}px):</span><input type="range" min="1" max="10" value={lineWidth} onChange={e => setLineWidth(Number(e.target.value))} /></label>
+                  <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>種類:</span><select value={lineStyle} onChange={e => setLineStyle(e.target.value)}><option value="solid">実線</option><option value="dashed">破線</option></select></label>
+                  <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>ピンの色:</span><input type="color" value={pointColor} onChange={e => setPointColor(e.target.value)} /></label>
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
