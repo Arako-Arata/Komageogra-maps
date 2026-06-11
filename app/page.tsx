@@ -19,7 +19,7 @@ export default function MapPage() {
   const [routeTitle, setRouteTitle] = useState('');
   const [routeDesc, setRouteDesc] = useState('');
   const [selectedTag, setSelectedTag] = useState<string>('');
-  const [uploadImage, setUploadImage] = useState<File | null>(null); // 【追加】画像ファイル用State
+  const [uploadImage, setUploadImage] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   const AVAILABLE_TAGS = ['合宿記録', '巡検記録', 'ジオい(ネタ帳)', '個人おでかけ', 'その他'];
@@ -41,6 +41,8 @@ export default function MapPage() {
   const [editTitle, setEditTitle] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [editTag, setEditTag] = useState<string>('');
+  const [editImage, setEditImage] = useState<File | null>(null); // 【追加】編集時の新画像
+  const [isDeletingImage, setIsDeletingImage] = useState(false); // 【追加】画像削除フラグ
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -135,7 +137,7 @@ export default function MapPage() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // 【修正】編集時に親の名前を上書きしてしまうバグの解消
+  // 【修正】編集時に画像も更新・削除できるように変更
   const handleUpdateRoute = async () => {
     if (!selectedRoute || !editTitle.trim()) return;
     setIsSaving(true);
@@ -146,22 +148,40 @@ export default function MapPage() {
       let newTitle = currentData.title;
       let newDesc = currentData.description;
       let newFeaturesData = currentData.features_data;
+      let finalImageUrl = selectedRoute.properties.image_url;
 
-      // 編集対象が「親（ファイル全体）」か「子（個別のポイント）」か判定
+      // 1. 画像の削除・差し替え処理
+      if (isDeletingImage) {
+        finalImageUrl = null;
+      } else if (editImage) {
+        const fileExt = editImage.name.split('.').pop();
+        const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage.from('images').upload(fileName, editImage);
+        if (uploadError) throw uploadError;
+        const { data: urlData } = supabase.storage.from('images').getPublicUrl(fileName);
+        finalImageUrl = urlData.publicUrl;
+      }
+
+      // 2. 親データの更新判定
       const isEditingParent = selectedRoute.name === selectedRoute.properties.originalParentName;
-
       if (isEditingParent) {
         newTitle = editTitle;
         newDesc = editDesc;
       }
 
+      // 3. 子データ（個別地物）の更新
       if (newFeaturesData && Array.isArray(newFeaturesData)) {
         newFeaturesData = newFeaturesData.map((f: any) => {
           const currentName = f.properties?.name || f.properties?.T1_Name || currentData.title;
           if (currentName === selectedRoute.name) {
              return { 
                ...f, 
-               properties: { ...f.properties, name: editTitle, description: editDesc } 
+               properties: { 
+                 ...f.properties, 
+                 name: editTitle, 
+                 description: editDesc,
+                 image_url: finalImageUrl // 画像URLを更新
+               } 
              };
           }
           return f;
@@ -178,8 +198,15 @@ export default function MapPage() {
 
       alert('更新しました');
       setIsEditingRoute(false);
+      setEditImage(null);
+      setIsDeletingImage(false);
       await fetchSavedRoutes(); 
-      setSelectedRoute((prev: any) => ({ ...prev, name: editTitle, description: editDesc, properties: { ...prev.properties, tags: newTags } }));
+      setSelectedRoute((prev: any) => ({ 
+        ...prev, 
+        name: editTitle, 
+        description: editDesc, 
+        properties: { ...prev.properties, tags: newTags, image_url: finalImageUrl } 
+      }));
     } catch (err: any) {
       alert('更新に失敗しました: ' + err.message);
     } finally {
@@ -202,10 +229,10 @@ export default function MapPage() {
         if (row.features_data && Array.isArray(row.features_data) && row.features_data.length > 0) {
           row.features_data.forEach((f: any) => {
             const individualName = f.properties?.name || f.properties?.T1_Name || baseProperties.name;
-            const individualDesc = f.properties?.description || baseProperties.description; // 子データの説明を優先
+            const individualDesc = f.properties?.description || baseProperties.description;
             features.push({
               type: 'Feature', geometry: f.geometry,
-              properties: { ...baseProperties, name: individualName, description: individualDesc, originalParentName: baseProperties.name, image_url: f.properties?.image_url } // 画像URLも読み込む
+              properties: { ...baseProperties, name: individualName, description: individualDesc, originalParentName: baseProperties.name, image_url: f.properties?.image_url }
             });
           });
         } else {
@@ -284,7 +311,6 @@ export default function MapPage() {
           if (!e.features || e.features.length === 0 || !map.current) return;
           const feature = e.features[0];
           const props = feature.properties;
-
           const targetFilter = ['all', ['==', 'id', props.id], ['==', 'name', props.name || '']] as any;
 
           if (feature.geometry.type === 'Point' || feature.geometry.type === 'MultiPoint') {
@@ -301,7 +327,6 @@ export default function MapPage() {
 
           const popupDiv = document.createElement('div');
           popupDiv.style.padding = '4px'; popupDiv.style.color = '#334155'; popupDiv.style.fontFamily = 'sans-serif';
-
           const title = document.createElement('h4');
           title.style.margin = '0 0 4px 0'; title.style.fontSize = '14px'; title.style.fontWeight = 'bold'; title.innerText = props.name || '名称未設定';
           popupDiv.appendChild(title);
@@ -312,23 +337,15 @@ export default function MapPage() {
             popupDiv.appendChild(parentName);
           }
 
-          // 【追加】ポップアップに画像を表示する
           if (props.image_url) {
             const img = document.createElement('img');
-            img.src = props.image_url;
-            img.style.width = '100%';
-            img.style.maxHeight = '150px';
-            img.style.objectFit = 'cover';
-            img.style.borderRadius = '4px';
-            img.style.marginBottom = '8px';
+            img.src = props.image_url; img.style.width = '100%'; img.style.maxHeight = '150px'; img.style.objectFit = 'cover'; img.style.borderRadius = '4px'; img.style.marginBottom = '8px';
             popupDiv.appendChild(img);
           }
 
-          // 【追加】ポップアップに説明文を表示する
           if (props.description) {
             const desc = document.createElement('div');
-            desc.style.fontSize = '12px'; desc.style.color = '#475569'; desc.style.marginBottom = '8px'; desc.style.whiteSpace = 'pre-wrap';
-            desc.innerText = props.description;
+            desc.style.fontSize = '12px'; desc.style.color = '#475569'; desc.style.marginBottom = '8px'; desc.style.whiteSpace = 'pre-wrap'; desc.innerText = props.description;
             popupDiv.appendChild(desc);
           }
 
@@ -361,28 +378,18 @@ export default function MapPage() {
 
           const existingPopups = document.getElementsByClassName('maplibregl-popup');
           for (let i = 0; i < existingPopups.length; i++) { existingPopups[i].remove(); }
-
           new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '240px' }).setLngLat(coordinates).setDOMContent(popupDiv).addTo(map.current!);
         });
-
         map.current?.on('mouseenter', layerId, () => { if (map.current) map.current.getCanvas().style.cursor = 'pointer'; });
         map.current?.on('mouseleave', layerId, () => { if (map.current) map.current.getCanvas().style.cursor = ''; });
       });
     });
   }, []);
 
-  useEffect(() => {
-    if (!map.current || !map.current.isStyleLoaded()) return;
-    try {
-      map.current.setPaintProperty('preview-lines', 'line-color', lineColor); map.current.setPaintProperty('preview-lines', 'line-width', lineWidth); map.current.setPaintProperty('preview-lines', 'line-dasharray', lineStyle === 'dashed' ? [2, 2] : [1, 0]); map.current.setPaintProperty('preview-points', 'circle-color', pointColor);
-    } catch (e) {}
-  }, [lineColor, lineWidth, lineStyle, pointColor]);
-
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) { setSelectedFileName(null); return; }
     setSelectedFileName(file.name);
-
     const reader = new FileReader();
     reader.onload = (event) => {
       const result = event.target?.result as string;
@@ -390,8 +397,6 @@ export default function MapPage() {
         let geojson: any;
         if (file.name.endsWith('.kml')) geojson = kml(new DOMParser().parseFromString(result, 'text/xml'));
         else if (file.name.endsWith('.geojson') || file.name.endsWith('.json')) geojson = JSON.parse(result);
-        else return alert('対応していないファイル形式です。');
-        
         const source = map.current?.getSource('preview-data') as maplibregl.GeoJSONSource;
         if (source) {
           source.setData(geojson);
@@ -408,20 +413,14 @@ export default function MapPage() {
               else if (f.geometry.type === 'Point') pointCoords.push(f.geometry.coordinates);
               else if (f.geometry.type === 'MultiPoint') pointCoords.push(...f.geometry.coordinates);
             });
-
             let finalGeom;
             if (lineCoords.length > 0) finalGeom = lineCoords.length === 1 ? { type: 'LineString', coordinates: lineCoords[0] } : { type: 'MultiLineString', coordinates: lineCoords };
             else if (pointCoords.length > 0) finalGeom = pointCoords.length === 1 ? { type: 'Point', coordinates: pointCoords[0] } : { type: 'MultiPoint', coordinates: pointCoords };
-            else finalGeom = geojson.features[0].geometry;
-
             const combinedFeature = { type: 'Feature', geometry: finalGeom, properties: geojson.features[0].properties, originalFeatures: geojson.features };
             setUploadData(combinedFeature);
-            
             if (pointCoords.length > 1 && file.name) setRouteTitle(file.name.replace(/\.[^/.]+$/, ""));
             else setRouteTitle(featureName || '');
-            
             setRouteDesc(featureDesc || '');
-
             let targetLng, targetLat;
             if (finalGeom.type === 'Point') [targetLng, targetLat] = finalGeom.coordinates;
             else if (finalGeom.type === 'MultiPoint') [targetLng, targetLat] = finalGeom.coordinates[0];
@@ -430,60 +429,40 @@ export default function MapPage() {
             if (targetLng !== undefined && targetLat !== undefined) map.current?.flyTo({ center: [targetLng, targetLat], zoom: 8 }); 
           }
         }
-      } catch (err) { alert('ファイルの読み込みに失敗しました。'); }
+      } catch (err) {}
     };
     reader.readAsText(file);
   };
 
-  const force2D = (coords: any): any => {
-    if (typeof coords[0] === 'number') return [coords[0], coords[1]];
-    return coords.map(force2D);
-  };
+  const force2D = (coords: any): any => { if (typeof coords[0] === 'number') return [coords[0], coords[1]]; return coords.map(force2D); };
 
-  // 【追加】画像アップロード処理を含む保存ロジック
   const handleSaveToDatabase = async () => {
     if (!uploadData || !routeTitle.trim()) return;
     setIsSaving(true);
     try {
       let imageUrl = null;
-
-      // 画像が選択されていればStorageにアップロード
       if (uploadImage) {
         const fileExt = uploadImage.name.split('.').pop();
         const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
         const { error: uploadError } = await supabase.storage.from('images').upload(fileName, uploadImage);
         if (uploadError) throw uploadError;
-        
         const { data: urlData } = supabase.storage.from('images').getPublicUrl(fileName);
         imageUrl = urlData.publicUrl;
       }
-
-      // 既存のポイントデータ（originalFeatures）に画像URLを付与
-      const featuresDataWithImage = uploadData.originalFeatures.map((f: any) => ({
-        ...f,
-        properties: { ...f.properties, image_url: imageUrl || f.properties.image_url }
-      }));
-
+      const featuresDataWithImage = uploadData.originalFeatures.map((f: any) => ({ ...f, properties: { ...f.properties, image_url: imageUrl || f.properties.image_url } }));
       const cleanGeometry = { ...uploadData.geometry, coordinates: force2D(uploadData.geometry.coordinates) };
-      
       const { error } = await supabase.from('routes').insert({ 
         title: routeTitle, description: routeDesc, geom: cleanGeometry, line_color: lineColor, line_width: lineWidth, line_style: lineStyle, point_color: pointColor,
         user_id: session?.user?.id, tags: selectedTag ? [selectedTag] : [],
-        features_data: featuresDataWithImage // 画像URLが付与されたデータを保存
+        features_data: featuresDataWithImage
       });
       if (error) throw error;
-      
       alert('データベースへの保存に成功しました！');
       const previewSource = map.current?.getSource('preview-data') as maplibregl.GeoJSONSource;
       if (previewSource) previewSource.setData({ type: 'FeatureCollection', features: [] });
-      
       setUploadData(null); setRouteTitle(''); setRouteDesc(''); setSelectedTag(''); setSelectedFileName(null); setUploadImage(null);
       fetchSavedRoutes();
-    } catch (err: any) {
-      alert('保存に失敗しました: ' + err.message);
-    } finally {
-      setIsSaving(false);
-    }
+    } catch (err: any) { alert('保存に失敗しました: ' + err.message); } finally { setIsSaving(false); }
   };
 
   const handleSaveComment = async () => {
@@ -501,11 +480,8 @@ export default function MapPage() {
     if (!window.confirm('このルートと関連するコメントをすべて削除します。本当によろしいですか？')) return;
     setIsSaving(true);
     try {
-      const { error: commentError } = await supabase.from('comments').delete().eq('route_id', selectedRoute.id);
-      if (commentError) throw commentError;
-      const { error: routeError } = await supabase.from('routes').delete().eq('id', selectedRoute.id);
-      if (routeError) throw routeError;
-
+      await supabase.from('comments').delete().eq('route_id', selectedRoute.id);
+      await supabase.from('routes').delete().eq('id', selectedRoute.id);
       alert('データを削除しました。');
       setSelectedRoute(null); fetchSavedRoutes();
     } catch (err: any) { alert('削除に失敗しました: ' + err.message); } finally { setIsSaving(false); }
@@ -515,8 +491,7 @@ export default function MapPage() {
     if (!window.confirm('このコメントを削除しますか？')) return;
     setIsSaving(true);
     try {
-      const { error } = await supabase.from('comments').delete().eq('id', commentId);
-      if (error) throw error;
+      await supabase.from('comments').delete().eq('id', commentId);
       if (selectedRoute) fetchComments(selectedRoute.id);
     } catch (err: any) { alert('コメントの削除に失敗しました: ' + err.message); } finally { setIsSaving(false); }
   };
@@ -544,7 +519,6 @@ export default function MapPage() {
     else if (geometry.type === 'LineString' || geometry.type === 'MultiPoint') coords = geometry.coordinates;
     else if (geometry.type === 'MultiLineString' || geometry.type === 'Polygon') coords = geometry.coordinates.flat(1);
     else if (geometry.type === 'MultiPolygon') coords = geometry.coordinates.flat(2);
-
     if (coords.length === 0) return null;
     const bounds = new maplibregl.LngLatBounds(coords[0], coords[0]);
     for (const coord of coords) { bounds.extend(coord); }
@@ -562,20 +536,14 @@ export default function MapPage() {
       }
     }
     const targetFilter = ['all', ['==', 'id', route.properties.id], ['==', 'name', route.properties.name || '']] as any;
-    if (route.geometry.type === 'Point' || route.geometry.type === 'MultiPoint') {
-      map.current.setFilter('flash-points', targetFilter);
-      setTimeout(() => { if (map.current) map.current.setFilter('flash-points', ['==', 'name', ''] as any); }, 600);
-    } else {
-      map.current.setFilter('flash-lines', targetFilter);
-      setTimeout(() => { if (map.current) map.current.setFilter('flash-lines', ['==', 'name', ''] as any); }, 600);
-    }
+    if (route.geometry.type === 'Point' || route.geometry.type === 'MultiPoint') { map.current.setFilter('flash-points', targetFilter); setTimeout(() => { if (map.current) map.current.setFilter('flash-points', ['==', 'name', ''] as any); }, 600); } 
+    else { map.current.setFilter('flash-lines', targetFilter); setTimeout(() => { if (map.current) map.current.setFilter('flash-lines', ['==', 'name', ''] as any); }, 600); }
     if (window.innerWidth < 768) setIsSidebarOpen(false);
   };
 
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden' }}>
       <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} style={{ position: 'absolute', top: '10px', left: '10px', zIndex: 20, width: '40px', height: '40px', display: 'flex', justifyContent: 'center', alignItems: 'center', backgroundColor: 'white', border: '1px solid #cbd5e1', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', cursor: 'pointer', fontSize: '20px', color: '#334155' }}>{isSidebarOpen ? '✕' : '☰'}</button>
-
       {!session && !isVerifying && (
         <button onClick={handleDiscordLogin} style={{ position: 'absolute', top: '10px', left: '60px', zIndex: 20, padding: '0 12px', height: '40px', display: 'flex', justifyContent: 'center', alignItems: 'center', backgroundColor: 'white', border: '1px solid #cbd5e1', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', color: '#ef4444' }}>ログイン</button>
       )}
@@ -585,23 +553,40 @@ export default function MapPage() {
         {selectedRoute ? (
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: 'rgba(255, 255, 255, 0.95)', padding: '12px', borderRadius: '8px', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
-              <button onClick={() => { setSelectedRoute(null); setIsEditingRoute(false); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontWeight: 'bold', padding: 0 }}>← 一覧・登録へ戻る</button>
+              <button onClick={() => { setSelectedRoute(null); setIsEditingRoute(false); setEditImage(null); setIsDeletingImage(false); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontWeight: 'bold', padding: 0 }}>← 一覧・登録へ戻る</button>
             </div>
 
             {isEditingRoute ? (
               <div style={{ marginBottom: '15px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <input type="text" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="タイトル" style={{ padding: '6px', fontSize: '14px', fontWeight: 'bold', border: '1px solid #ccc', borderRadius: '4px' }} />
-                <textarea value={editDesc} onChange={(e) => setEditDesc(e.target.value)} placeholder="説明・メモ" style={{ padding: '6px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px', minHeight: '80px', resize: 'vertical' }} />
+                <label style={{ fontSize: '13px', fontWeight: 'bold' }}>タイトル:</label>
+                <input type="text" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="タイトル" style={{ padding: '6px', fontSize: '14px', border: '1px solid #ccc', borderRadius: '4px' }} />
                 
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px', marginBottom: '4px' }}>
+                <label style={{ fontSize: '13px', fontWeight: 'bold' }}>説明:</label>
+                <textarea value={editDesc} onChange={(e) => setEditDesc(e.target.value)} placeholder="説明・メモ" style={{ padding: '6px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px', minHeight: '80px' }} />
+                
+                {/* 【追加】編集時の画像管理UI */}
+                <div style={{ marginTop: '8px', padding: '10px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>📷 画像の管理:</label>
+                  {selectedRoute.properties.image_url && !isDeletingImage && (
+                    <div style={{ marginBottom: '8px' }}>
+                      <img src={selectedRoute.properties.image_url} alt="現在" style={{ width: '100%', maxHeight: '80px', objectFit: 'cover', borderRadius: '4px' }} />
+                      <button onClick={() => setIsDeletingImage(true)} style={{ fontSize: '11px', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}>🗑️ 現在の画像を削除する</button>
+                    </div>
+                  )}
+                  {isDeletingImage && <div style={{ fontSize: '11px', color: '#ef4444', marginBottom: '8px' }}>※保存時に画像が削除されます</div>}
+                  <input type="file" accept="image/*" onChange={(e) => { setEditImage(e.target.files?.[0] || null); setIsDeletingImage(false); }} style={{ fontSize: '12px' }} />
+                  <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>差し替える場合は新しいファイルを選択してください</div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
                   {AVAILABLE_TAGS.map(tag => (
-                    <label key={tag} style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}><input type="radio" name="editRouteCategory" value={tag} checked={editTag === tag} onChange={() => setEditTag(tag)} />{tag}</label>
+                    <label key={tag} style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}><input type="radio" name="editRouteCategory" value={tag} checked={editTag === tag} onChange={() => setEditTag(tag)} />{tag}</label>
                   ))}
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={handleUpdateRoute} disabled={isSaving || !editTitle.trim()} style={{ flex: 1, padding: '8px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: (isSaving || !editTitle.trim()) ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '13px' }}>{isSaving ? '保存中...' : '💾 保存'}</button>
-                  <button onClick={() => setIsEditingRoute(false)} disabled={isSaving} style={{ flex: 1, padding: '8px', backgroundColor: '#e2e8f0', color: '#334155', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>キャンセル</button>
+                  <button onClick={handleUpdateRoute} disabled={isSaving || !editTitle.trim()} style={{ flex: 1, padding: '8px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 'bold' }}>{isSaving ? '保存中...' : '💾 保存'}</button>
+                  <button onClick={() => { setIsEditingRoute(false); setEditImage(null); setIsDeletingImage(false); }} style={{ flex: 1, padding: '8px', backgroundColor: '#e2e8f0', color: '#334155', border: 'none', borderRadius: '4px' }}>キャンセル</button>
                 </div>
               </div>
             ) : (
@@ -610,7 +595,6 @@ export default function MapPage() {
                 {selectedRoute.properties.originalParentName && selectedRoute.properties.originalParentName !== selectedRoute.name && (
                   <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px' }}>📁 {selectedRoute.properties.originalParentName}</div>
                 )}
-                {/* 【追加】詳細画面にも画像を表示 */}
                 {selectedRoute.properties.image_url && (
                   <img src={selectedRoute.properties.image_url} alt="登録画像" style={{ width: '100%', borderRadius: '6px', marginBottom: '10px' }} />
                 )}
@@ -620,68 +604,62 @@ export default function MapPage() {
                     {selectedRoute.properties.tags.map((tag: string) => <span key={tag} style={{ backgroundColor: '#e2e8f0', color: '#334155', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}>#{tag}</span>)}
                   </div>
                 )}
-                
                 <div style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}>
-                  <button onClick={handleDownloadGeoJSON} style={{ flex: 1, padding: '8px', fontSize: '13px', fontWeight: 'bold', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>📥 GeoJSON DL</button>
+                  <button onClick={handleDownloadGeoJSON} style={{ flex: 1, padding: '8px', fontSize: '13px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px' }}>📥 GeoJSON DL</button>
                   {session?.user?.id === selectedRoute.properties.userId && (
                     <>
-                      <button onClick={() => { setEditTitle(selectedRoute.name); setEditDesc(selectedRoute.description || ''); setEditTag(selectedRoute.properties.tags?.[0] || ''); setIsEditingRoute(true); }} style={{ padding: '8px 12px', fontSize: '13px', fontWeight: 'bold', backgroundColor: '#f59e0b', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✏️ 編集</button>
-                      <button onClick={handleDeleteRoute} disabled={isSaving} style={{ padding: '8px 12px', fontSize: '13px', fontWeight: 'bold', backgroundColor: isSaving ? '#fca5a5' : '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: isSaving ? 'not-allowed' : 'pointer' }}>{isSaving ? '...' : '🗑️ 削除'}</button>
+                      <button onClick={() => { setEditTitle(selectedRoute.name); setEditDesc(selectedRoute.description || ''); setEditTag(selectedRoute.properties.tags?.[0] || ''); setIsEditingRoute(true); }} style={{ padding: '8px 12px', fontSize: '13px', backgroundColor: '#f59e0b', color: 'white', border: 'none', borderRadius: '4px' }}>✏️ 編集</button>
+                      <button onClick={handleDeleteRoute} disabled={isSaving} style={{ padding: '8px 12px', fontSize: '13px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '4px' }}>🗑️</button>
                     </>
                   )}
                 </div>
               </>
             )}
 
-            <hr style={{ margin: '0 0 15px 0', border: 'none', borderTop: '1px solid #ddd' }} />
+            <hr style={{ margin: '0 0 15px 0', borderTop: '1px solid #ddd' }} />
             <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', fontWeight: 'bold' }}>コメント</h4>
-            <div style={{ flexGrow: 1, overflowY: 'auto', marginBottom: '15px', paddingRight: '5px' }}>
+            <div style={{ flexGrow: 1, overflowY: 'auto', marginBottom: '15px' }}>
               {comments.length === 0 ? <p style={{ fontSize: '12px', color: '#94a3b8' }}>まだコメントはありません。</p> : (
                 <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {comments.map((c) => (
                     <li key={c.id} style={{ backgroundColor: '#f1f5f9', padding: '10px', borderRadius: '6px', fontSize: '13px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           {c.profiles?.avatar_url && <img src={c.profiles.avatar_url} alt="avatar" style={{ width: '20px', height: '20px', borderRadius: '50%' }} />}
-                          <span style={{ fontWeight: 'bold', fontSize: '12px', color: '#334155' }}>{c.profiles?.display_name || 'ゲスト'}</span>
+                          <span style={{ fontWeight: 'bold', fontSize: '12px' }}>{c.profiles?.display_name || 'ゲスト'}</span>
                         </div>
-                        {session?.user?.id === c.user_id && <button onClick={() => handleDeleteComment(c.id)} disabled={isSaving} style={{ background: 'none', border: 'none', cursor: isSaving ? 'not-allowed' : 'pointer', fontSize: '14px', padding: '0', color: '#ef4444' }}>🗑️</button>}
+                        {session?.user?.id === c.user_id && <button onClick={() => handleDeleteComment(c.id)} disabled={isSaving} style={{ background: 'none', border: 'none', color: '#ef4444' }}>🗑️</button>}
                       </div>
                       <div style={{ whiteSpace: 'pre-wrap' }}>{c.content}</div>
-                      <div style={{ fontSize: '11px', color: '#64748b', marginTop: '5px', textAlign: 'right' }}>{new Date(c.created_at).toLocaleString('ja-JP')}</div>
                     </li>
                   ))}
                 </ul>
               )}
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
-              <textarea value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder="コメントを入力..." style={{ padding: '8px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px', resize: 'vertical', minHeight: '60px' }} />
-              <button onClick={handleSaveComment} disabled={isSaving || !newComment.trim()} style={{ padding: '8px', fontSize: '13px', fontWeight: 'bold', borderRadius: '4px', border: 'none', backgroundColor: (isSaving || !newComment.trim()) ? '#ccc' : '#3b82f6', color: 'white', cursor: (isSaving || !newComment.trim()) ? 'not-allowed' : 'pointer' }}>{isSaving ? '送信中...' : '送信する'}</button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <textarea value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder="コメントを入力..." style={{ padding: '8px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px', minHeight: '60px' }} />
+              <button onClick={handleSaveComment} disabled={isSaving || !newComment.trim()} style={{ padding: '8px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px' }}>送信</button>
             </div>
           </div>
-
         ) : (
-          <div style={{ overflowY: 'auto', paddingRight: '5px', height: '100%' }}>
-            
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', backgroundColor: 'rgba(255, 255, 255, 0.95)', padding: '10px 12px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-              <img src="/logo.png" alt="駒澤大学地理学研究会 空間情報データ倉庫" style={{ height: '30px', objectFit: 'contain', maxWidth: 'calc(100% - 60px)' }} />
-              {session && <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', cursor: 'pointer', padding: 0, fontWeight: 'bold', whiteSpace: 'nowrap', flexShrink: 0 }}>ログアウト</button>}
+          <div style={{ overflowY: 'auto', height: '100%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', backgroundColor: 'rgba(255, 255, 255, 0.95)', padding: '10px 12px', borderRadius: '8px' }}>
+              <img src="/logo.png" style={{ height: '30px', objectFit: 'contain', maxWidth: 'calc(100% - 60px)' }} />
+              {session && <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: 'bold' }}>ログアウト</button>}
             </div>
 
-            {!session && isVerifying && <div style={{ padding: '10px', textAlign: 'center', color: '#3b82f6', fontSize: '12px', fontWeight: 'bold' }}>⏳ 認証状態を確認中...</div>}
-            
             {session && (
               <>
                 <div style={{ marginBottom: '15px', padding: '12px', backgroundColor: 'rgba(255, 255, 255, 0.95)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  {profile?.avatar_url && <img src={profile.avatar_url} alt="avatar" style={{ width: '32px', height: '32px', borderRadius: '50%' }} />}
-                  <span style={{ fontWeight: 'bold', fontSize: '14px' }}>{profile?.display_name || '読込中...'}</span>
+                  {profile?.avatar_url && <img src={profile.avatar_url} style={{ width: '32px', height: '32px', borderRadius: '50%' }} />}
+                  <span style={{ fontWeight: 'bold', fontSize: '14px' }}>{profile?.display_name}</span>
                 </div>
-                <button onClick={() => setShowUploadForm(!showUploadForm)} style={{ width: '100%', padding: '8px', marginBottom: '15px', fontSize: '13px', fontWeight: 'bold', backgroundColor: showUploadForm ? '#e2e8f0' : '#ffffff', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer' }}>{showUploadForm ? '▼ アップロードを閉じる' : '▶ 新規アップロード'}</button>
+                <button onClick={() => setShowUploadForm(!showUploadForm)} style={{ width: '100%', padding: '8px', marginBottom: '15px', backgroundColor: showUploadForm ? '#e2e8f0' : '#ffffff', border: '1px solid #cbd5e1', borderRadius: '4px', fontWeight: 'bold' }}>{showUploadForm ? '▼ 閉じる' : '▶ 新規アップロード'}</button>
               </>
             )}
 
             {!showUploadForm && (
-              <div style={{ padding: '10px', backgroundColor: 'rgba(255, 255, 255, 0.85)', borderRadius: '8px', marginBottom: '15px', maxHeight: '500px', overflowY: 'auto' }}>
+              <div style={{ padding: '10px', backgroundColor: 'rgba(255, 255, 255, 0.85)', borderRadius: '8px', marginBottom: '15px' }}>
                 {AVAILABLE_TAGS.map(tag => {
                   if (!session && tag !== '合宿記録' && tag !== '巡検記録') return null;
                   const routesInTag = savedFeatures.filter(f => {
@@ -691,19 +669,18 @@ export default function MapPage() {
                   });
                   if (routesInTag.length === 0) return null;
                   const isAllHidden = routesInTag.every(f => hiddenRouteIds.includes(f.properties.id));
-
                   return (
                     <div key={tag} style={{ marginBottom: '12px' }}>
-                      <label style={{ fontWeight: 'bold', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: '#0f172a' }}>
-                        <input type="checkbox" checked={!isAllHidden} onChange={() => { if (isAllHidden) { setHiddenRouteIds(prev => prev.filter(id => !routesInTag.find(f => f.properties.id === id))); } else { const idsToHide = routesInTag.map(f => f.properties.id); setHiddenRouteIds(prev => Array.from(new Set([...prev, ...idsToHide]))); } }} />📁 {tag}
+                      <label style={{ fontWeight: 'bold', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input type="checkbox" checked={!isAllHidden} onChange={() => { if (isAllHidden) { setHiddenRouteIds(prev => prev.filter(id => !routesInTag.find(f => f.properties.id === id))); } else { setHiddenRouteIds(prev => Array.from(new Set([...prev, ...routesInTag.map(f => f.properties.id)]))); } }} />📁 {tag}
                       </label>
                       <div style={{ marginLeft: '24px', display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
                         {routesInTag.filter((route, index, self) => index === self.findIndex((r) => r.properties.id === route.properties.id)).map(route => (
-                          <div key={route.properties.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#475569' }}>
-                            <input type="checkbox" checked={!hiddenRouteIds.includes(route.properties.id)} onChange={(e) => { if (e.target.checked) { setHiddenRouteIds(prev => prev.filter(id => id !== route.properties.id)); } else { setHiddenRouteIds(prev => [...prev, route.properties.id]); } }} style={{ cursor: 'pointer' }} />
-                            <div onClick={() => handleRouteClick(route)} style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', flex: 1, padding: '2px 0' }}>
-                              <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: route.properties.color, border: '1px solid #cbd5e1', flexShrink: 0 }} />
-                              <span style={{ transition: 'color 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.color = '#3b82f6'} onMouseLeave={(e) => e.currentTarget.style.color = '#475569'}>{route.properties.originalParentName || route.properties.name}</span>
+                          <div key={route.properties.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+                            <input type="checkbox" checked={!hiddenRouteIds.includes(route.properties.id)} onChange={(e) => { if (e.target.checked) { setHiddenRouteIds(prev => prev.filter(id => id !== route.properties.id)); } else { setHiddenRouteIds(prev => [...prev, route.properties.id]); } }} />
+                            <div onClick={() => handleRouteClick(route)} style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', flex: 1 }}>
+                              <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: route.properties.color }} />
+                              <span onMouseEnter={(e) => e.currentTarget.style.color = '#3b82f6'} onMouseLeave={(e) => e.currentTarget.style.color = ''}>{route.properties.originalParentName || route.properties.name}</span>
                             </div>
                           </div>
                         ))}
@@ -711,48 +688,24 @@ export default function MapPage() {
                     </div>
                   );
                 })}
-                {savedFeatures.length === 0 && <p style={{ fontSize: '12px', color: '#94a3b8', textAlign: 'center' }}>保存されたデータはありません</p>}
               </div>
             )}
 
             {session && showUploadForm && (
-              <div style={{ padding: '10px', backgroundColor: 'rgba(255, 255, 255, 0.95)', borderRadius: '8px', marginBottom: '15px' }}>
-                <div style={{ marginBottom: '15px' }}>
-                  <label style={{ display: 'block', padding: '12px', backgroundColor: '#f8fafc', border: '2px dashed #cbd5e1', borderRadius: '6px', textAlign: 'center', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', color: '#475569', transition: 'background-color 0.2s ease' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e2e8f0'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}>
-                    {selectedFileName ? `📂 ${selectedFileName}` : '📂 ファイルを選択 (KML / GeoJSON)'}
-                    <input type="file" accept=".geojson,.json,.kml" onChange={handleFileUpload} style={{ display: 'none' }} />
-                  </label>
+              <div style={{ padding: '10px', backgroundColor: 'rgba(255, 255, 255, 0.95)', borderRadius: '8px' }}>
+                <input type="file" accept=".geojson,.json,.kml" onChange={handleFileUpload} style={{ fontSize: '12px', marginBottom: '10px' }} />
+                <input type="text" value={routeTitle} onChange={(e) => setRouteTitle(e.target.value)} placeholder="タイトル" style={{ width: '100%', padding: '6px', marginBottom: '10px', border: '1px solid #ccc', borderRadius: '4px' }} />
+                <textarea value={routeDesc} onChange={(e) => setRouteDesc(e.target.value)} placeholder="メモ" style={{ width: '100%', padding: '6px', marginBottom: '10px', border: '1px solid #ccc', borderRadius: '4px' }} />
+                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>📷 画像を添付:</label>
+                <input type="file" accept="image/*" onChange={(e) => setUploadImage(e.target.files?.[0] || null)} style={{ fontSize: '12px', marginBottom: '10px' }} />
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                  {AVAILABLE_TAGS.map(tag => (
+                    <label key={tag} style={{ fontSize: '11px' }}><input type="radio" name="routeCategory" value={tag} checked={selectedTag === tag} onChange={() => setSelectedTag(tag)} />{tag}</label>
+                  ))}
                 </div>
-                <hr style={{ margin: '10px 0', border: 'none', borderTop: '1px solid #ddd' }} />
-                <div style={{ marginBottom: '15px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <label style={{ fontSize: '13px', fontWeight: 'bold' }}>タイトル:</label>
-                  <input type="text" value={routeTitle} onChange={(e) => setRouteTitle(e.target.value)} placeholder="例：〇〇巡検ルート" style={{ padding: '4px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px' }} />
-                  <label style={{ fontSize: '13px', fontWeight: 'bold' }}>説明・メモ:</label>
-                  <textarea value={routeDesc} onChange={(e) => setRouteDesc(e.target.value)} placeholder="ルートに関する詳細なメモ" style={{ padding: '4px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px', minHeight: '60px', resize: 'vertical' }} />
-                  
-                  {/* 【追加】画像アップロードUI */}
-                  <label style={{ fontSize: '13px', fontWeight: 'bold', marginTop: '4px' }}>📷 画像を添付 (任意):</label>
-                  <input type="file" accept="image/*" onChange={(e) => setUploadImage(e.target.files?.[0] || null)} style={{ fontSize: '12px', marginBottom: '4px' }} />
-
-                  <label style={{ fontSize: '13px', fontWeight: 'bold', marginTop: '4px' }}>カテゴリ (1つだけ選択):</label>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
-                    {AVAILABLE_TAGS.map(tag => (
-                      <label key={tag} style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}><input type="radio" name="routeCategory" value={tag} checked={selectedTag === tag} onChange={() => setSelectedTag(tag)} />{tag}</label>
-                    ))}
-                  </div>
-
-                  <button onClick={handleSaveToDatabase} disabled={isSaving || !uploadData} style={{ marginTop: '5px', padding: '8px', fontSize: '13px', fontWeight: 'bold', backgroundColor: (isSaving || !uploadData) ? '#ccc' : '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: (isSaving || !uploadData) ? 'not-allowed' : 'pointer' }}>{isSaving ? '保存中...' : 'データベースに保存'}</button>
-                </div>
-                <hr style={{ margin: '10px 0', border: 'none', borderTop: '1px solid #ddd' }} />
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
-                  <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>線の色:</span><input type="color" value={lineColor} onChange={e => setLineColor(e.target.value)} /></label>
-                  <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>太さ ({lineWidth}px):</span><input type="range" min="1" max="10" value={lineWidth} onChange={e => setLineWidth(Number(e.target.value))} /></label>
-                  <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>種類:</span><select value={lineStyle} onChange={e => setLineStyle(e.target.value)}><option value="solid">実線</option><option value="dashed">破線</option></select></label>
-                  <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>ピンの色:</span><input type="color" value={pointColor} onChange={e => setPointColor(e.target.value)} /></label>
-                </div>
+                <button onClick={handleSaveToDatabase} disabled={isSaving || !uploadData} style={{ width: '100%', padding: '10px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 'bold' }}>保存</button>
               </div>
             )}
-            
           </div>
         )}
       </div>
