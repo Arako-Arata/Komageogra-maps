@@ -378,7 +378,10 @@ export default function MapPage() {
 
           if (sessionRef.current) {
             const btn = document.createElement('button');
-            btn.innerText = '詳細・コメント・編集';
+            // 【修正】作成者のみに「編集」の文字を含める
+            const isOwner = sessionRef.current.user?.id === props.userId;
+            btn.innerText = isOwner ? '詳細・コメント・編集' : '詳細・コメント';
+            
             btn.style.width = '100%'; btn.style.padding = '8px'; btn.style.marginTop = '4px'; btn.style.backgroundColor = '#3b82f6'; btn.style.color = 'white'; btn.style.border = 'none'; btn.style.borderRadius = '4px'; btn.style.cursor = 'pointer'; btn.style.fontSize = '12px'; btn.style.fontWeight = 'bold';
             btn.onclick = async () => {
               try {
@@ -674,7 +677,6 @@ export default function MapPage() {
               </>
             )}
 
-            {/* 【修正】編集画面中はコメント領域を隠す */}
             {!isEditingRoute && (
               <>
                 <hr style={{ margin: '0 0 15px 0', borderTop: '1px solid #ddd' }} />
@@ -776,7 +778,6 @@ export default function MapPage() {
                   </label>
                 </div>
 
-                {/* 【追加】新規アップロード時のスタイル設定UI */}
                 <div style={{ marginBottom: '10px', padding: '10px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
                   <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>🎨 スタイル設定:</label>
                   <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>線の色:</span><input type="color" value={lineColor} onChange={e => setLineColor(e.target.value)} /></label>
