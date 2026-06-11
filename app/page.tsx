@@ -6,7 +6,6 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { kml } from '@tmcw/togeojson';
 import { supabase } from '../lib/supabase';
 
-// 【追加】説明文にHTMLが含まれている場合（KML由来など）にパースする関数
 const parseDescription = (desc: any) => {
   if (!desc) return '';
   if (typeof desc === 'string') {
@@ -179,7 +178,6 @@ export default function MapPage() {
         finalImageUrl = urlData.publicUrl;
       }
 
-      // 【修正】_feature_id を使って正確に子データのみを更新する
       if (newFeaturesData && Array.isArray(newFeaturesData)) {
         newFeaturesData = newFeaturesData.map((f: any, idx: number) => {
           const fid = f.properties?._feature_id || `legacy_${idx}`;
@@ -190,7 +188,6 @@ export default function MapPage() {
         });
       }
 
-      // ファイル内に地物が1つしかない場合のみ、親のタイトルも連動して変更する
       if (newFeaturesData && newFeaturesData.length === 1) {
         newTitle = editTitle;
       }
@@ -199,14 +196,8 @@ export default function MapPage() {
       
       const { data: updatedRows, error: updateError } = await supabase.from('routes')
         .update({ 
-          title: newTitle, 
-          description: newDesc, 
-          features_data: newFeaturesData, 
-          tags: newTags,
-          line_color: editLineColor,
-          line_width: editLineWidth,
-          line_style: editLineStyle,
-          point_color: editPointColor
+          title: newTitle, description: newDesc, features_data: newFeaturesData, tags: newTags,
+          line_color: editLineColor, line_width: editLineWidth, line_style: editLineStyle, point_color: editPointColor
         })
         .eq('id', selectedRoute.id).select();
         
@@ -214,29 +205,13 @@ export default function MapPage() {
       if (!updatedRows || updatedRows.length === 0) throw new Error('更新権限がありません。');
 
       alert('更新しました');
-      setIsEditingRoute(false);
-      setEditImage(null);
-      setIsDeletingImage(false);
+      setIsEditingRoute(false); setEditImage(null); setIsDeletingImage(false);
       await fetchSavedRoutes(); 
       setSelectedRoute((prev: any) => ({ 
-        ...prev, 
-        name: editTitle, 
-        description: editDesc, 
-        properties: { 
-          ...prev.properties, 
-          tags: newTags, 
-          image_url: finalImageUrl,
-          color: editLineColor,
-          width: editLineWidth,
-          style: editLineStyle,
-          pointColor: editPointColor
-        } 
+        ...prev, name: editTitle, description: editDesc, 
+        properties: { ...prev.properties, tags: newTags, image_url: finalImageUrl, color: editLineColor, width: editLineWidth, style: editLineStyle, pointColor: editPointColor } 
       }));
-    } catch (err: any) {
-      alert('更新に失敗しました: ' + err.message);
-    } finally {
-      setIsSaving(false);
-    }
+    } catch (err: any) { alert('更新に失敗しました: ' + err.message); } finally { setIsSaving(false); }
   };
 
   const fetchSavedRoutes = async () => {
@@ -255,7 +230,7 @@ export default function MapPage() {
           row.features_data.forEach((f: any, idx: number) => {
             const individualName = f.properties?.name || f.properties?.T1_Name || baseProperties.name;
             const individualDesc = f.properties?.description || baseProperties.description;
-            const fid = f.properties?._feature_id || `legacy_${idx}`; // 古いデータ用にフォールバックIDを付与
+            const fid = f.properties?._feature_id || `legacy_${idx}`; 
             
             features.push({
               type: 'Feature', geometry: f.geometry,
@@ -315,6 +290,15 @@ export default function MapPage() {
     });
 
     map.current.addControl(new maplibregl.NavigationControl(), 'top-right');
+    
+    // 【追加】位置情報追従（GeolocateControl）の追加
+    map.current.addControl(
+      new maplibregl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: true
+      }),
+      'top-right'
+    );
 
     map.current.on('load', () => {
       map.current?.addSource('saved-data', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
@@ -372,7 +356,6 @@ export default function MapPage() {
             popupDiv.appendChild(img);
           }
 
-          // 【修正】ポップアップの説明文でHTML表示をサポート
           if (props.description) {
             const desc = document.createElement('div');
             desc.style.fontSize = '12px'; desc.style.color = '#475569'; desc.style.marginBottom = '8px'; desc.style.lineHeight = '1.4';
@@ -497,10 +480,8 @@ export default function MapPage() {
         imageUrl = urlData.publicUrl;
       }
       
-      // 【修正】保存時に各要素へ専用の _feature_id を発行
       const featuresDataWithImage = uploadData.originalFeatures.map((f: any, idx: number) => ({ 
-        ...f, 
-        properties: { ...f.properties, image_url: imageUrl || f.properties.image_url, _feature_id: `${Date.now()}_${idx}` } 
+        ...f, properties: { ...f.properties, image_url: imageUrl || f.properties.image_url, _feature_id: `${Date.now()}_${idx}` } 
       }));
       
       const cleanGeometry = { ...uploadData.geometry, coordinates: force2D(uploadData.geometry.coordinates) };
@@ -626,7 +607,12 @@ export default function MapPage() {
                     </div>
                   )}
                   {isDeletingImage && <div style={{ fontSize: '11px', color: '#ef4444', marginBottom: '8px' }}>※保存時に画像が削除されます</div>}
-                  <input type="file" accept="image/*" onChange={(e) => { setEditImage(e.target.files?.[0] || null); setIsDeletingImage(false); }} style={{ fontSize: '12px' }} />
+                  
+                  {/* 【UI修正】編集画面の画像選択ボタン化 */}
+                  <label style={{ display: 'block', padding: '8px', textAlign: 'center', cursor: 'pointer', border: '1px solid #334155', borderRadius: '4px', backgroundColor: '#ffffff', fontSize: '12px', color: '#334155' }}>
+                    {editImage ? `🖼️ ${editImage.name}` : 'ファイルを選択'}
+                    <input type="file" accept="image/*" onChange={(e) => { setEditImage(e.target.files?.[0] || null); setIsDeletingImage(false); }} style={{ display: 'none' }} />
+                  </label>
                 </div>
 
                 <div style={{ marginTop: '4px', padding: '10px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
@@ -657,7 +643,6 @@ export default function MapPage() {
                 {selectedRoute.properties.image_url && (
                   <img src={selectedRoute.properties.image_url} alt="登録画像" style={{ width: '100%', borderRadius: '6px', marginBottom: '10px' }} />
                 )}
-                {/* 【修正】サイドバーの詳細画面でもHTMLタグを反映して表示 */}
                 <div 
                   style={{ fontSize: '13px', color: '#475569', marginBottom: '10px', lineHeight: '1.5', wordBreak: 'break-word' }} 
                   dangerouslySetInnerHTML={{ __html: parseDescription(selectedRoute.description) }} 
@@ -766,11 +751,28 @@ export default function MapPage() {
 
             {session && showUploadForm && (
               <div style={{ padding: '10px', backgroundColor: 'rgba(255, 255, 255, 0.95)', borderRadius: '8px' }}>
-                <input type="file" accept=".geojson,.json,.kml" onChange={handleFileUpload} style={{ fontSize: '12px', marginBottom: '10px' }} />
+                
+                {/* 【UI修正】空間データ添付ボタン */}
+                <div style={{ marginBottom: '10px' }}>
+                  <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>🗺️ KML, GeoJSONを添付:</label>
+                  <label style={{ display: 'block', padding: '8px', textAlign: 'center', cursor: 'pointer', border: '1px solid #334155', borderRadius: '4px', backgroundColor: '#f8fafc', fontSize: '13px', color: '#334155' }}>
+                    {selectedFileName ? `📁 ${selectedFileName}` : 'ファイルを選択'}
+                    <input type="file" accept=".geojson,.json,.kml" onChange={handleFileUpload} style={{ display: 'none' }} />
+                  </label>
+                </div>
+
                 <input type="text" value={routeTitle} onChange={(e) => setRouteTitle(e.target.value)} placeholder="タイトル" style={{ width: '100%', padding: '6px', marginBottom: '10px', border: '1px solid #ccc', borderRadius: '4px' }} />
                 <textarea value={routeDesc} onChange={(e) => setRouteDesc(e.target.value)} placeholder="メモ" style={{ width: '100%', padding: '6px', marginBottom: '10px', border: '1px solid #ccc', borderRadius: '4px' }} />
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>📷 画像を添付:</label>
-                <input type="file" accept="image/*" onChange={(e) => setUploadImage(e.target.files?.[0] || null)} style={{ fontSize: '12px', marginBottom: '10px' }} />
+                
+                {/* 【UI修正】画像添付ボタン */}
+                <div style={{ marginBottom: '10px' }}>
+                  <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>📷 画像を添付 (任意):</label>
+                  <label style={{ display: 'block', padding: '8px', textAlign: 'center', cursor: 'pointer', border: '1px solid #334155', borderRadius: '4px', backgroundColor: '#f8fafc', fontSize: '13px', color: '#334155' }}>
+                    {uploadImage ? `🖼️ ${uploadImage.name}` : 'ファイルを選択'}
+                    <input type="file" accept="image/*" onChange={(e) => setUploadImage(e.target.files?.[0] || null)} style={{ display: 'none' }} />
+                  </label>
+                </div>
+
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
                   {AVAILABLE_TAGS.map(tag => (
                     <label key={tag} style={{ fontSize: '11px' }}><input type="radio" name="routeCategory" value={tag} checked={selectedTag === tag} onChange={() => setSelectedTag(tag)} />{tag}</label>
