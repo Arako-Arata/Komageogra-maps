@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-// 【修正】kmlに加えてgpxの翻訳機もインポートする
 import { kml, gpx } from '@tmcw/togeojson';
 import { supabase } from '../lib/supabase';
 
@@ -219,14 +218,18 @@ export default function MapPage() {
 
   const fetchSavedRoutes = async () => {
     try {
-      const { data, error } = await supabase.from('routes').select('*');
+      // 【修正】routesテーブルと一緒にprofilesテーブルから作成者情報も取得する
+      const { data, error } = await supabase.from('routes').select('*, profiles(display_name, avatar_url)');
       if (error) throw error;
 
       const features: any[] = [];
       data.forEach((row: any) => {
         const baseProperties = {
           id: row.id, name: row.title, description: row.description, color: row.line_color || '#3b82f6', width: row.line_width || 4,
-          style: row.line_style || 'solid', pointColor: row.point_color || '#eab308', userId: row.user_id, tags: row.tags || []
+          style: row.line_style || 'solid', pointColor: row.point_color || '#eab308', userId: row.user_id, tags: row.tags || [],
+          // 【追加】プロパティに作成者の名前とアイコンURLを格納
+          creatorName: row.profiles?.display_name || 'ゲスト',
+          creatorAvatar: row.profiles?.avatar_url || ''
         };
 
         if (row.features_data && Array.isArray(row.features_data) && row.features_data.length > 0) {
@@ -342,6 +345,7 @@ export default function MapPage() {
           const popupDiv = document.createElement('div');
           popupDiv.className = 'custom-popup-content';
           popupDiv.style.padding = '4px'; popupDiv.style.color = '#334155'; popupDiv.style.fontFamily = 'sans-serif';
+          
           const title = document.createElement('h4');
           title.style.margin = '0 0 4px 0'; title.style.fontSize = '14px'; title.style.fontWeight = 'bold'; title.innerText = props.name || '名称未設定';
           popupDiv.appendChild(title);
@@ -366,16 +370,55 @@ export default function MapPage() {
             popupDiv.appendChild(desc);
           }
 
+          // 【追加】タグと作成者情報を横並びにするためのコンテナ
+          const bottomRow = document.createElement('div');
+          bottomRow.style.display = 'flex';
+          bottomRow.style.justifyContent = 'space-between';
+          bottomRow.style.alignItems = 'center';
+          bottomRow.style.marginBottom = '8px';
+
+          // タグ部分
+          const tagsDiv = document.createElement('div');
+          tagsDiv.style.display = 'flex';
+          tagsDiv.style.gap = '4px';
+          tagsDiv.style.flexWrap = 'wrap';
           if (parsedTags.length > 0) {
-            const tagsDiv = document.createElement('div');
-            tagsDiv.style.display = 'flex'; tagsDiv.style.gap = '4px'; tagsDiv.style.marginBottom = '8px'; tagsDiv.style.flexWrap = 'wrap';
             parsedTags.forEach((tag: string) => {
               const span = document.createElement('span');
               span.innerText = `#${tag}`; span.style.backgroundColor = '#e2e8f0'; span.style.color = '#334155'; span.style.padding = '2px 8px'; span.style.borderRadius = '12px'; span.style.fontSize = '11px'; span.style.fontWeight = 'bold';
               tagsDiv.appendChild(span);
             });
-            popupDiv.appendChild(tagsDiv);
           }
+          bottomRow.appendChild(tagsDiv);
+
+          // 【追加】作成者情報部分
+          if (props.creatorName) {
+            const creatorDiv = document.createElement('div');
+            creatorDiv.style.display = 'flex';
+            creatorDiv.style.alignItems = 'center';
+            creatorDiv.style.gap = '6px';
+            
+            if (props.creatorAvatar) {
+              const avatarImg = document.createElement('img');
+              avatarImg.src = props.creatorAvatar;
+              avatarImg.style.width = '20px';
+              avatarImg.style.height = '20px';
+              avatarImg.style.borderRadius = '50%';
+              avatarImg.style.objectFit = 'cover';
+              creatorDiv.appendChild(avatarImg);
+            }
+            
+            const nameSpan = document.createElement('span');
+            nameSpan.innerText = props.creatorName;
+            nameSpan.style.fontSize = '11px';
+            nameSpan.style.color = '#64748b';
+            nameSpan.style.fontWeight = 'bold';
+            creatorDiv.appendChild(nameSpan);
+
+            bottomRow.appendChild(creatorDiv);
+          }
+
+          popupDiv.appendChild(bottomRow);
 
           if (sessionRef.current) {
             const btn = document.createElement('button');
@@ -423,7 +466,6 @@ export default function MapPage() {
         let geojson: any;
         const lowerName = file.name.toLowerCase();
         
-        // 【修正】拡張子による振り分けにGPXを追加
         if (lowerName.endsWith('.kml')) {
           geojson = kml(new DOMParser().parseFromString(result, 'text/xml'));
         } else if (lowerName.endsWith('.gpx')) {
@@ -771,7 +813,6 @@ export default function MapPage() {
               <div style={{ padding: '10px', backgroundColor: 'rgba(255, 255, 255, 0.95)', borderRadius: '8px' }}>
                 
                 <div style={{ marginBottom: '10px' }}>
-                  {/* 【修正】GPXの文言とaccept属性を追加 */}
                   <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>🗺️ 空間データを添付 (KML, GPX等):</label>
                   <label style={{ display: 'block', padding: '8px', textAlign: 'center', cursor: 'pointer', border: '1px solid #334155', borderRadius: '4px', backgroundColor: '#f8fafc', fontSize: '13px', color: '#334155' }}>
                     {selectedFileName ? `📁 ${selectedFileName}` : 'ファイルを選択'}
