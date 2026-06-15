@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { kml } from '@tmcw/togeojson';
+// 【修正】kmlに加えてgpxの翻訳機もインポートする
+import { kml, gpx } from '@tmcw/togeojson';
 import { supabase } from '../lib/supabase';
 
 const parseDescription = (desc: any) => {
@@ -378,7 +379,6 @@ export default function MapPage() {
 
           if (sessionRef.current) {
             const btn = document.createElement('button');
-            // 【修正】作成者のみに「編集」の文字を含める
             const isOwner = sessionRef.current.user?.id === props.userId;
             btn.innerText = isOwner ? '詳細・コメント・編集' : '詳細・コメント';
             
@@ -421,10 +421,19 @@ export default function MapPage() {
       const result = event.target?.result as string;
       try {
         let geojson: any;
-        if (file.name.endsWith('.kml')) geojson = kml(new DOMParser().parseFromString(result, 'text/xml'));
-        else if (file.name.endsWith('.geojson') || file.name.endsWith('.json')) geojson = JSON.parse(result);
+        const lowerName = file.name.toLowerCase();
+        
+        // 【修正】拡張子による振り分けにGPXを追加
+        if (lowerName.endsWith('.kml')) {
+          geojson = kml(new DOMParser().parseFromString(result, 'text/xml'));
+        } else if (lowerName.endsWith('.gpx')) {
+          geojson = gpx(new DOMParser().parseFromString(result, 'text/xml'));
+        } else if (lowerName.endsWith('.geojson') || lowerName.endsWith('.json')) {
+          geojson = JSON.parse(result);
+        }
+
         const source = map.current?.getSource('preview-data') as maplibregl.GeoJSONSource;
-        if (source) {
+        if (source && geojson) {
           source.setData(geojson);
           if (geojson.features && geojson.features.length > 0) {
             let lineCoords: any[] = []; let pointCoords: any[] = []; let featureName = ''; let featureDesc = '';
@@ -463,7 +472,9 @@ export default function MapPage() {
             if (targetLng !== undefined && targetLat !== undefined) map.current?.flyTo({ center: [targetLng, targetLat], zoom: 8 }); 
           }
         }
-      } catch (err) {}
+      } catch (err) {
+        alert('ファイルの読み込みに失敗しました。対応していないデータ形式の可能性があります。');
+      }
     };
     reader.readAsText(file);
   };
@@ -623,7 +634,7 @@ export default function MapPage() {
                   <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>線の色:</span><input type="color" value={editLineColor} onChange={e => setEditLineColor(e.target.value)} /></label>
                   <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>太さ ({editLineWidth}px):</span><input type="range" min="1" max="10" value={editLineWidth} onChange={e => setEditLineWidth(Number(e.target.value))} /></label>
                   <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>種類:</span><select value={editLineStyle} onChange={e => setEditLineStyle(e.target.value)}><option value="solid">実線</option><option value="dashed">破線</option></select></label>
-                  <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>ピンの色:</span><input type="color" value={editPointColor} onChange={e => setEditPointColor(e.target.value)} /></label>
+                  <label style={{ display: 'flex', justifyContent: 'space-between' }}><span>ピンの色:</span><input type="color" value={editPointColor} onChange={e => setPointColor(e.target.value)} /></label>
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
@@ -760,10 +771,11 @@ export default function MapPage() {
               <div style={{ padding: '10px', backgroundColor: 'rgba(255, 255, 255, 0.95)', borderRadius: '8px' }}>
                 
                 <div style={{ marginBottom: '10px' }}>
-                  <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>🗺️ KML, GeoJSONを添付:</label>
+                  {/* 【修正】GPXの文言とaccept属性を追加 */}
+                  <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>🗺️ 空間データを添付 (KML, GPX等):</label>
                   <label style={{ display: 'block', padding: '8px', textAlign: 'center', cursor: 'pointer', border: '1px solid #334155', borderRadius: '4px', backgroundColor: '#f8fafc', fontSize: '13px', color: '#334155' }}>
                     {selectedFileName ? `📁 ${selectedFileName}` : 'ファイルを選択'}
-                    <input type="file" accept=".geojson,.json,.kml" onChange={handleFileUpload} style={{ display: 'none' }} />
+                    <input type="file" accept=".geojson,.json,.kml,.gpx" onChange={handleFileUpload} style={{ display: 'none' }} />
                   </label>
                 </div>
 
