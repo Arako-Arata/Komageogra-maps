@@ -95,7 +95,7 @@ export default function MapPage() {
     }
   }, []);
 
-  const ALLOWED_GUILD_ID = '1049983719445889034';
+  const ALLOWED_GUILD_ID = process.env.NEXT_PUBLIC_DISCORD_GUILD_ID;
 
   useEffect(() => {
     const isRedirecting = typeof window !== 'undefined' && window.location.hash.includes('access_token');
@@ -391,8 +391,8 @@ export default function MapPage() {
           }
           bottomRow.appendChild(tagsDiv);
 
-          // 【追加】作成者情報部分
-          if (props.creatorName) {
+// 【追加】作成者情報部分
+          if (sessionRef.current && props.creatorName) {
             const creatorDiv = document.createElement('div');
             creatorDiv.style.display = 'flex';
             creatorDiv.style.alignItems = 'center';
