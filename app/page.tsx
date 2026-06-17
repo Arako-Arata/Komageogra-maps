@@ -295,7 +295,7 @@ export default function MapPage() {
       center: [139.658630, 35.628857], zoom: 9
     });
 
-    map.current.addControl(new maplibregl.NavigationControl(), 'top-right');
+   map.current.addControl(new maplibregl.NavigationControl(), 'top-right');
     
     map.current.addControl(
       new maplibregl.GeolocateControl({
@@ -303,6 +303,15 @@ export default function MapPage() {
         trackUserLocation: true
       }),
       'top-right'
+    );
+
+    // 👇 縮尺コントロールを追加（右下または左下に配置するのが一般的です）
+    map.current.addControl(
+      new maplibregl.ScaleControl({
+        maxWidth: 100,      // スケールバーの最大幅（ピクセル）
+        unit: 'metric'     // 単位をメートル法（m / km）に指定
+      }),
+      'bottom-right'       // 配置する場所（'bottom-left'、'bottom-right' など）
     );
 
     map.current.on('load', () => {
