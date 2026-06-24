@@ -6,7 +6,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { kml, gpx } from '@tmcw/togeojson';
 import { supabase } from '../lib/supabase';
 
-// ベースマップのスタイル定義（コンポーネントの外に定義）
+// ベースマップのスタイル定義
 const BASEMAP_STYLE = {
   version: 8 as const,
   sources: {
@@ -42,13 +42,11 @@ export default function MapPage() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
 
-  // 既存のカラー・スタイル設定用ステート
   const [lineColor, setLineColor] = useState('#22c55e');
   const [lineWidth, setLineWidth] = useState(4);
   const [lineStyle, setLineStyle] = useState('solid');
   const [pointColor, setPointColor] = useState('#eab308');
 
-  // アップロード・保存用ステート
   const [uploadData, setUploadData] = useState<any>(null);
   const [routeTitle, setRouteTitle] = useState('');
   const [routeDesc, setRouteDesc] = useState('');
@@ -56,13 +54,11 @@ export default function MapPage() {
   const [uploading, setUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // 認証関連ステート
   const [session, setSession] = useState<any>(null);
   const [isMember, setIsMember] = useState<boolean | null>(null);
   const [checkingMember, setCheckingMember] = useState(false);
   const [userProfile, setUserProfile] = useState<{ name: string; avatar: string } | null>(null);
 
-  // 現在選択されているベースマップを管理するステート
   const [currentBasemap, setCurrentBasemap] = useState('gsi-pale');
 
   const sessionRef = useRef<any>(null);
@@ -97,7 +93,6 @@ export default function MapPage() {
     }
     setCheckingMember(true);
     try {
-      // ユーザープロファイル取得
       const userRes = await fetch('https://discord.com/api/users/@me', {
         headers: { Authorization: `Bearer ${currentSession.provider_token}` }
       });
@@ -109,12 +104,12 @@ export default function MapPage() {
         });
       }
 
-      // ギルド所属チェック
       const guildsRes = await fetch('https://discord.com/api/users/@me/guilds', {
         headers: { Authorization: `Bearer ${currentSession.provider_token}` }
       });
       if (guildsRes.ok) {
         const guilds = await guildsRes.json();
+        // 💡 ここで環境変数から読み込む（Vercel側での設定が必須）
         const targetGuildId = process.env.NEXT_PUBLIC_DISCORD_GUILD_ID;
         const hasGuild = guilds.some((g: any) => g.id === targetGuildId);
         setIsMember(hasGuild);
@@ -129,7 +124,6 @@ export default function MapPage() {
     }
   };
 
-  // ベースマップ切り替え関数
   const changeBasemap = (basemapId: string) => {
     if (!map.current) return;
     const targetLayers = ['basemap-gsi-pale', 'basemap-gsi-std', 'basemap-gsi-photo', 'basemap-osm'];
@@ -146,7 +140,6 @@ export default function MapPage() {
   useEffect(() => {
     if (map.current) return;
 
-    // 初期スタイルを定義したオブジェクトに置き換え
     map.current = new maplibregl.Map({
       container: mapContainer.current!,
       style: BASEMAP_STYLE,
@@ -163,7 +156,6 @@ export default function MapPage() {
       'top-right'
     );
 
-    //縮尺コントロールを右下に追加
     map.current.addControl(
       new maplibregl.ScaleControl({
         maxWidth: 100,
@@ -175,7 +167,6 @@ export default function MapPage() {
     map.current.on('load', async () => {
       if (!map.current) return;
 
-      // 既存のデータベースからのデータ読み込み処理
       const { data: routes, error } = await supabase.from('routes').select('*');
       if (error) {
         console.error(error);
@@ -234,7 +225,6 @@ export default function MapPage() {
       });
     });
 
-    // クリック時のポップアップ制御（ログアウト時作成者非表示対応版）
     map.current.on('click', async (e) => {
       if (!map.current) return;
       const features = map.current.queryRenderedFeatures(e.point);
@@ -275,7 +265,6 @@ export default function MapPage() {
           popupContainer.appendChild(tagSpan);
         }
 
-        //ログイン状態の時のみ作成者情報を表示するロジックを維持
         if (sessionRef.current && route.creator_name) {
           const creatorDiv = document.createElement('div');
           creatorDiv.style.display = 'flex';
@@ -320,7 +309,6 @@ export default function MapPage() {
     });
   }, []);
 
-  // ファイル読み込み処理
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -381,7 +369,6 @@ export default function MapPage() {
           filter: ['==', '$type', 'Point']
         });
 
-        // プレビュー全体が入るようにカメラ位置を設定
         const coordinates: [number, number][] = [];
         const extractCoords = (geometry: any) => {
           if (geometry.type === 'Point') coordinates.push(geometry.coordinates);
@@ -411,7 +398,6 @@ export default function MapPage() {
     }
   };
 
-  // プレビューのリアルタイムスタイル更新
   useEffect(() => {
     if (map.current && map.current.getLayer('preview-layer-line')) {
       map.current.setPaintProperty('preview-layer-line', 'line-color', lineColor);
@@ -426,7 +412,6 @@ export default function MapPage() {
     }
   }, [pointColor]);
 
-  // データベース保存処理
   const handleSaveToDatabase = async () => {
     if (!uploadData) return;
     setIsSaving(true);
@@ -512,10 +497,8 @@ export default function MapPage() {
 
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden' }}>
-      {/* 地図コンテナ */}
       <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
 
-      {/* サイドバーUI (省略せずに記述) */}
       <div style={{ position: 'absolute', top: '10px', left: '10px', zIndex: 10, width: '320px', backgroundColor: 'rgba(255,255,255,0.95)', padding: '15px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '15px' }}>
           <h2 style={{ fontSize: '16px', fontWeight: 'bold', margin: 0 }}>駒澤大学地理学研究会<br/><span style={{ fontSize: '12px', color: '#666' }}>空間情報データ倉庫(仮)</span></h2>
@@ -571,7 +554,6 @@ export default function MapPage() {
         ) : null}
       </div>
 
-      {/* ベースマップ切り替えUI（右下、縮尺コントロールの上に絶対配置） */}
       <div 
         style={{ 
           position: 'absolute', 
