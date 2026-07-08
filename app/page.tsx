@@ -6,7 +6,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { kml, gpx } from '@tmcw/togeojson';
 import { supabase } from '../lib/supabase';
 
-// 【追加】ベースマップのスタイル定義
+// ベースマップのスタイル定義
 const BASEMAP_STYLE = {
   version: 8 as const,
   sources: {
@@ -52,7 +52,7 @@ export default function MapPage() {
   const [uploadImage, setUploadImage] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  const AVAILABLE_TAGS = ['合宿記録', '巡検記録', 'ジオい(ネタ帳)', '個人おでかけ', 'その他'];
+  const AVAILABLE_TAGS = ['合宿記録', '巡検記録', 'ゼミ', 'ジオい(ネタ帳)', '個人おでかけ', 'その他'];
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
 
   const [selectedRoute, setSelectedRoute] = useState<any>(null);
@@ -80,13 +80,20 @@ export default function MapPage() {
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
 
-  // 【追加】現在選択されているベースマップのState
   const [currentBasemap, setCurrentBasemap] = useState('gsi-pale');
-  // 【追加】3DモードのState
   const [is3DMode, setIs3DMode] = useState(false);
+  
+  // 【追加】コンテキストメニュー（右クリック）用のStateとRef
+  const [contextMenu, setContextMenu] = useState<{x: number, y: number, lng: number, lat: number} | null>(null);
+  const is3DModeRef = useRef(is3DMode);
 
   const sessionRef = useRef<any>(null);
   useEffect(() => { sessionRef.current = session; }, [session]);
+
+  // 3Dモードの状態をRefに同期（イベントリスナー内で最新の値を参照するため）
+  useEffect(() => {
+    is3DModeRef.current = is3DMode;
+  }, [is3DMode]);
 
   const [profile, setProfile] = useState<any>(null);
 
@@ -179,7 +186,6 @@ export default function MapPage() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // 【追加】ベースマップ切り替え関数
   const changeBasemap = (basemapId: string) => {
     if (!map.current) return;
     const targetLayers = ['basemap-gsi-pale', 'basemap-gsi-std', 'basemap-gsi-photo', 'basemap-osm'];
@@ -192,7 +198,6 @@ export default function MapPage() {
     setCurrentBasemap(basemapId);
   };
 
-  // 【追加】3Dモード切り替え関数
   const toggle3DMode = () => {
     if (!map.current) return;
     
@@ -208,10 +213,17 @@ export default function MapPage() {
         });
       }
       map.current.setTerrain({ source: 'gsidem-terrain-rgb', exaggeration: 1.5 });
+      // 3Dモードオン：右ドラッグでの回転・傾斜を許可
+      map.current.dragRotate.enable();
+      map.current.touchPitch.enable();
       map.current.easeTo({ pitch: 65, duration: 1000 });
+      setContextMenu(null); // メニューが開いていれば閉じる
     } else {
       map.current.setTerrain(null);
       map.current.easeTo({ pitch: 0, duration: 1000 });
+      // 3Dモードオフ：右ドラッグでの回転・傾斜を禁止
+      map.current.dragRotate.disable();
+      map.current.touchPitch.disable();
     }
     
     setIs3DMode(!is3DMode);
@@ -343,11 +355,14 @@ export default function MapPage() {
     `;
     document.head.appendChild(style);
 
-    // 【修正】初期スタイルにBASEMAP_STYLEを適用
     map.current = new maplibregl.Map({
       container: mapContainer.current,
       style: BASEMAP_STYLE,
-      center: [139.658630, 35.628857], zoom: 9
+      center: [139.658630, 35.628857], 
+      zoom: 9,
+      // 初期状態（2D）では右ドラッグでの回転・傾斜を無効化
+      dragRotate: false,
+      touchPitch: false
     });
 
    map.current.addControl(new maplibregl.NavigationControl(), 'top-right');
@@ -367,6 +382,24 @@ export default function MapPage() {
       }),
       'bottom-right'       
     );
+
+    // 【追加】右クリックでのコンテキストメニュー表示
+    map.current.on('contextmenu', (e) => {
+      // 3Dモードがオンの時は通常の右クリック機能（傾斜操作）を優先
+      if (is3DModeRef.current) return;
+      
+      e.originalEvent.preventDefault();
+      setContextMenu({
+        x: e.point.x,
+        y: e.point.y,
+        lng: e.lngLat.lng,
+        lat: e.lngLat.lat
+      });
+    });
+
+    // マップがクリックされたり動いたりした時にコンテキストメニューを閉じる
+    map.current.on('click', () => setContextMenu(null));
+    map.current.on('movestart', () => setContextMenu(null));
 
     map.current.on('load', () => {
       map.current?.addSource('saved-data', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
@@ -911,6 +944,49 @@ export default function MapPage() {
         )}
       </div>
       <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
+
+      {/* 【追加】右クリック時に表示されるカスタムコンテキストメニュー */}
+      {contextMenu && (
+        <div style={{
+          position: 'absolute',
+          left: `${contextMenu.x}px`,
+          top: `${contextMenu.y}px`,
+          zIndex: 50,
+          backgroundColor: 'white',
+          border: '1px solid #cbd5e1',
+          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+          borderRadius: '4px',
+          padding: '4px 0',
+          minWidth: '150px'
+        }}>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(`${contextMenu.lat.toFixed(6)}, ${contextMenu.lng.toFixed(6)}`);
+              setContextMenu(null);
+              alert('座標をコピーしました');
+            }}
+            style={{
+              display: 'block',
+              width: '100%',
+              padding: '8px 16px',
+              border: 'none',
+              backgroundColor: 'transparent',
+              textAlign: 'left',
+              cursor: 'pointer',
+              fontSize: '13px',
+              color: '#334155',
+              fontWeight: 'bold'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            📄 座標をコピー<br/>
+            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'normal' }}>
+              {contextMenu.lat.toFixed(4)}, {contextMenu.lng.toFixed(4)}
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* 3D切り替え & ベースマップUI */}
       <div 
