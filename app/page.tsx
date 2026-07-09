@@ -21,7 +21,6 @@ const BASEMAP_STYLE = {
     { id: 'basemap-osm', type: 'raster' as const, source: 'osm', layout: { visibility: 'none' as const } },
     { id: 'basemap-gsi-std', type: 'raster' as const, source: 'gsi-std', layout: { visibility: 'none' as const } },
     { id: 'basemap-gsi-pale', type: 'raster' as const, source: 'gsi-pale', layout: { visibility: 'visible' as const } },
-    // 陰影起伏図レイヤー
     { id: 'layer-hillshade', type: 'raster' as const, source: 'gsi-hillshade', layout: { visibility: 'none' as const }, paint: { 'raster-opacity': 0.4 } }
   ]
 };
@@ -86,8 +85,9 @@ export default function MapPage() {
   const [currentBasemap, setCurrentBasemap] = useState('gsi-pale');
   const [is3DMode, setIs3DMode] = useState(false);
   
-  // 【追加】陰影起伏図の透明度State
   const [hillshadeOpacity, setHillshadeOpacity] = useState(0.4);
+  // 【追加】高さの倍率State
+  const [exaggeration, setExaggeration] = useState(1.5);
 
   const [contextMenu, setContextMenu] = useState<{x: number, y: number, lng: number, lat: number} | null>(null);
   const is3DModeRef = useRef(is3DMode);
@@ -99,7 +99,6 @@ export default function MapPage() {
     is3DModeRef.current = is3DMode;
   }, [is3DMode]);
 
-  // 3Dモードと選択ベースマップによる陰影起伏図の表示制御
   useEffect(() => {
     if (!map.current || !map.current.isStyleLoaded()) return;
     const shouldShowHillshade = is3DMode && (currentBasemap === 'gsi-pale' || currentBasemap === 'gsi-std');
@@ -112,12 +111,18 @@ export default function MapPage() {
     }
   }, [is3DMode, currentBasemap]);
 
-  // 【追加】透明度スライダーの値をレイヤーに反映
   useEffect(() => {
     if (map.current && map.current.isStyleLoaded() && map.current.getLayer('layer-hillshade')) {
       map.current.setPaintProperty('layer-hillshade', 'raster-opacity', hillshadeOpacity);
     }
   }, [hillshadeOpacity]);
+
+  // 【追加】高さ倍率スライダーの値を反映
+  useEffect(() => {
+    if (map.current && is3DMode && map.current.getSource('gsidem-terrain-rgb')) {
+      map.current.setTerrain({ source: 'gsidem-terrain-rgb', exaggeration: exaggeration });
+    }
+  }, [exaggeration, is3DMode]);
 
   const [profile, setProfile] = useState<any>(null);
 
@@ -236,7 +241,7 @@ export default function MapPage() {
           attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">国土地理院</a> / <a href="https://gsj-seamless.jp/seamless/elev/terrainRGB.html" target="_blank">産総研</a>'
         });
       }
-      map.current.setTerrain({ source: 'gsidem-terrain-rgb', exaggeration: 1.5 });
+      map.current.setTerrain({ source: 'gsidem-terrain-rgb', exaggeration: exaggeration });
       map.current.setMaxPitch(85);
       map.current.easeTo({ pitch: 65, duration: 1000 });
       setContextMenu(null); 
@@ -1014,9 +1019,10 @@ export default function MapPage() {
           display: 'flex',
           flexDirection: 'column',
           gap: '8px',
-          width: '160px' // 横幅を固定して子要素の長さを揃える
+          width: '160px' 
         }}
       >
+        {/* 1. 陰影起伏の透明度バー */}
         {is3DMode && (currentBasemap === 'gsi-pale' || currentBasemap === 'gsi-std') && (
           <div style={{ width: '100%', boxSizing: 'border-box', backgroundColor: 'rgba(255, 255, 255, 0.95)', padding: '6px 10px', borderRadius: '4px', boxShadow: '0 2px 6px rgba(0,0,0,0.2)', border: '1px solid #ccc' }}>
             <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#333', marginBottom: '4px', textAlign: 'center' }}>
@@ -1034,10 +1040,29 @@ export default function MapPage() {
           </div>
         )}
 
+        {/* 2. 高さの倍率調整バー */}
+        {is3DMode && (
+          <div style={{ width: '100%', boxSizing: 'border-box', backgroundColor: 'rgba(255, 255, 255, 0.95)', padding: '6px 10px', borderRadius: '4px', boxShadow: '0 2px 6px rgba(0,0,0,0.2)', border: '1px solid #ccc' }}>
+            <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#333', marginBottom: '4px', textAlign: 'center' }}>
+              高さ倍率: {exaggeration.toFixed(1)}倍
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="3"
+              step="0.1"
+              value={exaggeration}
+              onChange={(e) => setExaggeration(parseFloat(e.target.value))}
+              style={{ width: '100%', margin: 0, cursor: 'pointer' }}
+            />
+          </div>
+        )}
+
+        {/* 3. 3D表示ボタン */}
         <button 
           onClick={toggle3DMode}
           style={{
-            width: '100%', // 親要素に合わせて横幅を拡張
+            width: '100%',
             boxSizing: 'border-box',
             padding: '8px 12px',
             backgroundColor: is3DMode ? '#3b82f6' : 'white',
@@ -1055,12 +1080,13 @@ export default function MapPage() {
           {is3DMode ? '🏔️ 3D表示: オン' : '⛰️ 3D表示: オフ'}
         </button>
 
+        {/* 4. ベースマップ選択ボタン */}
         <div style={{ width: '100%', boxSizing: 'border-box', backgroundColor: 'white', padding: '6px 10px', borderRadius: '4px', boxShadow: '0 2px 6px rgba(0,0,0,0.2)', border: '1px solid #ccc' }}>
           <select 
             value={currentBasemap} 
             onChange={(e) => changeBasemap(e.target.value)}
             style={{ 
-              width: '100%', // 親要素に合わせて横幅を拡張
+              width: '100%', 
               fontSize: '12px', 
               border: 'none', 
               outline: 'none', 
