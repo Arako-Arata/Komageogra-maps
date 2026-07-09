@@ -13,13 +13,16 @@ const BASEMAP_STYLE = {
     'gsi-pale': { type: 'raster' as const, tiles: ['https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png'], tileSize: 256, attribution: "<a href='https://maps.gsi.go.jp/development/ichiran.html' target='_blank'>国土地理院</a>" },
     'gsi-std': { type: 'raster' as const, tiles: ['https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png'], tileSize: 256, attribution: "<a href='https://maps.gsi.go.jp/development/ichiran.html' target='_blank'>国土地理院</a>" },
     'gsi-photo': { type: 'raster' as const, tiles: ['https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg'], tileSize: 256, attribution: "<a href='https://maps.gsi.go.jp/development/ichiran.html' target='_blank'>国土地理院</a>" },
-    'osm': { type: 'raster' as const, tiles: ['https://a.tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, attribution: '© OpenStreetMap contributors' }
+    'osm': { type: 'raster' as const, tiles: ['https://a.tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, attribution: '© OpenStreetMap contributors' },
+    'gsi-hillshade': { type: 'raster' as const, tiles: ['https://cyberjapandata.gsi.go.jp/xyz/hillshademap/{z}/{x}/{y}.png'], tileSize: 256, attribution: "国土地理院" }
   },
   layers: [
     { id: 'basemap-gsi-photo', type: 'raster' as const, source: 'gsi-photo', layout: { visibility: 'none' as const } },
     { id: 'basemap-osm', type: 'raster' as const, source: 'osm', layout: { visibility: 'none' as const } },
     { id: 'basemap-gsi-std', type: 'raster' as const, source: 'gsi-std', layout: { visibility: 'none' as const } },
-    { id: 'basemap-gsi-pale', type: 'raster' as const, source: 'gsi-pale', layout: { visibility: 'visible' as const } }
+    { id: 'basemap-gsi-pale', type: 'raster' as const, source: 'gsi-pale', layout: { visibility: 'visible' as const } },
+    // 陰影起伏図レイヤー
+    { id: 'layer-hillshade', type: 'raster' as const, source: 'gsi-hillshade', layout: { visibility: 'none' as const }, paint: { 'raster-opacity': 0.4 } }
   ]
 };
 
@@ -83,17 +86,38 @@ export default function MapPage() {
   const [currentBasemap, setCurrentBasemap] = useState('gsi-pale');
   const [is3DMode, setIs3DMode] = useState(false);
   
-  // 【追加】コンテキストメニュー（右クリック）用のStateとRef
+  // 【追加】陰影起伏図の透明度State
+  const [hillshadeOpacity, setHillshadeOpacity] = useState(0.4);
+
   const [contextMenu, setContextMenu] = useState<{x: number, y: number, lng: number, lat: number} | null>(null);
   const is3DModeRef = useRef(is3DMode);
 
   const sessionRef = useRef<any>(null);
   useEffect(() => { sessionRef.current = session; }, [session]);
 
-  // 3Dモードの状態をRefに同期（イベントリスナー内で最新の値を参照するため）
   useEffect(() => {
     is3DModeRef.current = is3DMode;
   }, [is3DMode]);
+
+  // 3Dモードと選択ベースマップによる陰影起伏図の表示制御
+  useEffect(() => {
+    if (!map.current || !map.current.isStyleLoaded()) return;
+    const shouldShowHillshade = is3DMode && (currentBasemap === 'gsi-pale' || currentBasemap === 'gsi-std');
+    if (map.current.getLayer('layer-hillshade')) {
+      map.current.setLayoutProperty(
+        'layer-hillshade', 
+        'visibility', 
+        shouldShowHillshade ? 'visible' : 'none'
+      );
+    }
+  }, [is3DMode, currentBasemap]);
+
+  // 【追加】透明度スライダーの値をレイヤーに反映
+  useEffect(() => {
+    if (map.current && map.current.isStyleLoaded() && map.current.getLayer('layer-hillshade')) {
+      map.current.setPaintProperty('layer-hillshade', 'raster-opacity', hillshadeOpacity);
+    }
+  }, [hillshadeOpacity]);
 
   const [profile, setProfile] = useState<any>(null);
 
@@ -213,17 +237,13 @@ export default function MapPage() {
         });
       }
       map.current.setTerrain({ source: 'gsidem-terrain-rgb', exaggeration: 1.5 });
-      // 3Dモードオン：右ドラッグでの回転・傾斜を許可
-      map.current.dragRotate.enable();
-      map.current.touchPitch.enable();
+      map.current.setMaxPitch(85);
       map.current.easeTo({ pitch: 65, duration: 1000 });
-      setContextMenu(null); // メニューが開いていれば閉じる
+      setContextMenu(null); 
     } else {
       map.current.setTerrain(null);
+      map.current.setMaxPitch(0);
       map.current.easeTo({ pitch: 0, duration: 1000 });
-      // 3Dモードオフ：右ドラッグでの回転・傾斜を禁止
-      map.current.dragRotate.disable();
-      map.current.touchPitch.disable();
     }
     
     setIs3DMode(!is3DMode);
@@ -360,9 +380,8 @@ export default function MapPage() {
       style: BASEMAP_STYLE,
       center: [139.658630, 35.628857], 
       zoom: 9,
-      // 初期状態（2D）では右ドラッグでの回転・傾斜を無効化
-      dragRotate: false,
-      touchPitch: false
+      dragRotate: true,
+      maxPitch: 0
     });
 
    map.current.addControl(new maplibregl.NavigationControl(), 'top-right');
@@ -383,9 +402,7 @@ export default function MapPage() {
       'bottom-right'       
     );
 
-    // 【追加】右クリックでのコンテキストメニュー表示
     map.current.on('contextmenu', (e) => {
-      // 3Dモードがオンの時は通常の右クリック機能（傾斜操作）を優先
       if (is3DModeRef.current) return;
       
       e.originalEvent.preventDefault();
@@ -397,7 +414,6 @@ export default function MapPage() {
       });
     });
 
-    // マップがクリックされたり動いたりした時にコンテキストメニューを閉じる
     map.current.on('click', () => setContextMenu(null));
     map.current.on('movestart', () => setContextMenu(null));
 
@@ -945,7 +961,7 @@ export default function MapPage() {
       </div>
       <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
 
-      {/* 【追加】右クリック時に表示されるカスタムコンテキストメニュー */}
+      {/* 右クリック時のカスタムコンテキストメニュー */}
       {contextMenu && (
         <div style={{
           position: 'absolute',
@@ -998,12 +1014,31 @@ export default function MapPage() {
           display: 'flex',
           flexDirection: 'column',
           gap: '8px',
-          alignItems: 'flex-end'
+          width: '160px' // 横幅を固定して子要素の長さを揃える
         }}
       >
+        {is3DMode && (currentBasemap === 'gsi-pale' || currentBasemap === 'gsi-std') && (
+          <div style={{ width: '100%', boxSizing: 'border-box', backgroundColor: 'rgba(255, 255, 255, 0.95)', padding: '6px 10px', borderRadius: '4px', boxShadow: '0 2px 6px rgba(0,0,0,0.2)', border: '1px solid #ccc' }}>
+            <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#333', marginBottom: '4px', textAlign: 'center' }}>
+              陰影起伏: {Math.round(hillshadeOpacity * 100)}%
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={hillshadeOpacity}
+              onChange={(e) => setHillshadeOpacity(parseFloat(e.target.value))}
+              style={{ width: '100%', margin: 0, cursor: 'pointer' }}
+            />
+          </div>
+        )}
+
         <button 
           onClick={toggle3DMode}
           style={{
+            width: '100%', // 親要素に合わせて横幅を拡張
+            boxSizing: 'border-box',
             padding: '8px 12px',
             backgroundColor: is3DMode ? '#3b82f6' : 'white',
             color: is3DMode ? 'white' : '#334155',
@@ -1013,17 +1048,19 @@ export default function MapPage() {
             cursor: 'pointer',
             fontSize: '12px',
             fontWeight: 'bold',
-            transition: 'all 0.2s ease'
+            transition: 'all 0.2s ease',
+            textAlign: 'center'
           }}
         >
           {is3DMode ? '🏔️ 3D表示: オン' : '⛰️ 3D表示: オフ'}
         </button>
 
-        <div style={{ backgroundColor: 'white', padding: '6px 10px', borderRadius: '4px', boxShadow: '0 2px 6px rgba(0,0,0,0.2)', border: '1px solid #ccc' }}>
+        <div style={{ width: '100%', boxSizing: 'border-box', backgroundColor: 'white', padding: '6px 10px', borderRadius: '4px', boxShadow: '0 2px 6px rgba(0,0,0,0.2)', border: '1px solid #ccc' }}>
           <select 
             value={currentBasemap} 
             onChange={(e) => changeBasemap(e.target.value)}
             style={{ 
+              width: '100%', // 親要素に合わせて横幅を拡張
               fontSize: '12px', 
               border: 'none', 
               outline: 'none', 
