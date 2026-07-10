@@ -86,7 +86,6 @@ export default function MapPage() {
   const [is3DMode, setIs3DMode] = useState(false);
   
   const [hillshadeOpacity, setHillshadeOpacity] = useState(0.4);
-  // 【追加】高さの倍率State
   const [exaggeration, setExaggeration] = useState(1.5);
 
   const [contextMenu, setContextMenu] = useState<{x: number, y: number, lng: number, lat: number} | null>(null);
@@ -117,7 +116,6 @@ export default function MapPage() {
     }
   }, [hillshadeOpacity]);
 
-  // 【追加】高さ倍率スライダーの値を反映
   useEffect(() => {
     if (map.current && is3DMode && map.current.getSource('gsidem-terrain-rgb')) {
       map.current.setTerrain({ source: 'gsidem-terrain-rgb', exaggeration: exaggeration });
@@ -1013,7 +1011,7 @@ export default function MapPage() {
       <div 
         style={{ 
           position: 'absolute', 
-          bottom: '50px', 
+          bottom: '90px', 
           right: '10px', 
           zIndex: 10, 
           display: 'flex',
